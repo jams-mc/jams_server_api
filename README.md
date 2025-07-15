@@ -1,1 +1,1 @@
-# jams_server_api
+Note to self: edit it later
