@@ -15,7 +15,7 @@
     "@octokit/rest": "^20.0.2",
   "jszip": "^3.10.1",
     "node-fetch": "^2.6.9",
-    "formdata-node": "^6.0.4"
+    "formdata-node": "latest"
   },
   "devDependencies": {
     "eslint": "8.45.0",
