@@ -1,54 +1,50 @@
-import JSZip from "jszip";
-import fetch from "node-fetch";
-import crypto from "crypto";
+const JSZip = require("jszip");
+const fetch = require("node-fetch");
+const crypto = require("crypto");
 
-export const config = {
-  runtime: "edge", // faster on Vercel edge network
-};
-
-export default async function handler(req) {
+export default async function handler(req, res) {
   const GITHUB_ZIP_URL = "https://github.com/jams-mc/J.A.M.S.-Resource-Pack-Files/archive/refs/heads/OFFICIAL-VERSION-DONT-FUCK-UP.zip";
   const WEBHOOK_URL = process.env.DISCORD_WEBHOOK;
 
-  const userIP = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  const userAgent = req.headers.get("user-agent") || "unknown";
+  const userIP = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || "unknown";
+  const userAgent = req.headers["user-agent"] || "unknown";
   const timestamp = new Date().toISOString();
-  const requestURL = new URL(req.url);
 
-  // Download zip
-  const res = await fetch(`${GITHUB_ZIP_URL}?jam=${Math.random()}`);
-  const buf = await res.arrayBuffer();
+  const githubRes = await fetch(`${GITHUB_ZIP_URL}?jam=${Math.random()}`);
+  const buf = await githubRes.buffer();
 
   const originalZip = await JSZip.loadAsync(buf);
   const newZip = new JSZip();
 
-  const prefix = "J.A.M.S.-Resource-Pack-Files-OFFICIAL-VERSION-DONT-FUCK-UP/";
+  for (const [path, file] of Object.entries(originalZip.files)) {
+    if (
+      file.dir ||
+      !path.startsWith("J.A.M.S.-Resource-Pack-Files-OFFICIAL-VERSION-DONT-FUCK-UP/files/")
+    ) continue;
 
-  // Repack under /OFFICIAL-VERSION-DONT-FUCK-UP/files/*
-  originalZip.folder(`${prefix}files`).forEach(async (relativePath, file) => {
+    const strippedPath = path.replace(
+      "J.A.M.S.-Resource-Pack-Files-OFFICIAL-VERSION-DONT-FUCK-UP/",
+      ""
+    );
     const content = await file.async("nodebuffer");
-    const newPath = `OFFICIAL-VERSION-DONT-FUCK-UP/files/${relativePath}`;
-    newZip.file(newPath, content);
-  });
+    newZip.file(strippedPath, content);
+  }
 
   const finalZip = await newZip.generateAsync({ type: "nodebuffer" });
   const sha256 = crypto.createHash("sha256").update(finalZip).digest("hex");
 
-  // Call proxycheck.io
   const proxyRes = await fetch(`https://proxycheck.io/v2/${userIP}?key=111111-222222-333333-444444&vpn=3&asn=1&risk=2&port=1&seen=1&days=7&tag=msg&cur=1&node=1&time=1&short=1`);
   const proxyJson = await proxyRes.json();
 
-  // Create logs
   const logData = {
     timestamp,
     ip: userIP,
     userAgent,
-    requestedUrl: requestURL.href,
+    requestedUrl: req.url,
     sha256,
     proxyCheck: proxyJson,
   };
 
-  // Discord Webhook (embed + logs)
   await fetch(WEBHOOK_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -71,11 +67,8 @@ export default async function handler(req) {
     }),
   });
 
-  return new Response(finalZip, {
-    headers: {
-      "Content-Type": "application/zip",
-      "Content-Disposition": `attachment; filename="JAMS-PACK.zip"`,
-      "Content-Length": finalZip.length,
-    },
-  });
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", `attachment; filename="JAMS-PACK.zip"`);
+  res.setHeader("Content-Length", finalZip.length);
+  res.status(200).send(finalZip);
 }
