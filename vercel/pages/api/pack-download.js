@@ -1,6 +1,6 @@
-const JSZip = require("jszip");
-const fetch = require("node-fetch");
-const crypto = require("crypto");
+import JSZip from "jszip";
+import fetch from "node-fetch";
+import crypto from "crypto";
 
 export default async function handler(req, res) {
   const GITHUB_ZIP_URL = "https://github.com/jams-mc/J.A.M.S.-Resource-Pack-Files/archive/refs/heads/OFFICIAL-VERSION-DONT-FUCK-UP.zip";
@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   const timestamp = new Date().toISOString();
 
   const githubRes = await fetch(`${GITHUB_ZIP_URL}?jam=${Math.random()}`);
-  const buf = await githubRes.buffer();
+  const buf = Buffer.from(await githubRes.arrayBuffer());
 
   const originalZip = await JSZip.loadAsync(buf);
   const newZip = new JSZip();
@@ -19,7 +19,7 @@ export default async function handler(req, res) {
   for (const [path, file] of Object.entries(originalZip.files)) {
     if (
       file.dir ||
-      !path.startsWith("J.A.M.S.-Resource-Pack-Files-OFFICIAL-VERSION-DONT-FUCK-UP/files/")
+      !path.startsWith("J.A.M.S.-Resource-Pack-Files-OFFICIAL-VERSION-DONT-FUCK-UP/")
     ) continue;
 
     const strippedPath = path.replace(
