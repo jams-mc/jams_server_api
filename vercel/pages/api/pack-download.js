@@ -1,8 +1,8 @@
 import JSZip from "jszip";
 import fetch from "node-fetch";
 import crypto from "crypto";
-import { FormData } from "formdata-node";
-import { File } from "formdata-node/file";
+import { FormData, File } from 'formdata-polyfill/esm.min.js';
+
 
 export default async function handler(req, res) {
   const GITHUB_ZIP_URL =
