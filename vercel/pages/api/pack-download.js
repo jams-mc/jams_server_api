@@ -85,6 +85,7 @@ export default async function handler(req, res) {
     const blobPath = `resource-pack/@latest.zip`;
 
     const blob = await put(blobPath, finalZipBuffer, {
+      token: process.env.VERCEL_BLOB_READ_WRITE_TOKEN
       contentType: "application/zip",
       access: "public", // ensure public read access
     });
