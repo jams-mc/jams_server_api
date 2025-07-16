@@ -87,6 +87,7 @@ export default async function handler(req, res) {
     
     const blob = await put(blobPath, finalZipBuffer, {
       token: process.env.VERCEL_BLOB_READ_WRITE_TOKEN,
+      allowOverwrite: true,
       contentType: "application/zip",
       access: "public", // ensure public read access
     });
@@ -178,11 +179,13 @@ export default async function handler(req, res) {
   }
 
   // Respond to user
-  return res.status(200).json({
-    success: true,
-    blobUrl,
-    sha256,
-    sizeBytes: finalZipBuffer.length,
-    fileCount,
-  });
-}
+//  return res.status(200).json({
+//    success: true,
+//    blobUrl,
+//    sha256,
+//    sizeBytes: finalZipBuffer.length,
+//    fileCount,
+//  });
+//}
+
+return res.redirect(308, blobUrl);
