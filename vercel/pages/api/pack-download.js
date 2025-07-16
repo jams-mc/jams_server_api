@@ -20,6 +20,9 @@ export default async function handler(req, res) {
   try {
     // Step 1: Download GitHub ZIP
     const githubRes = await fetch(`${GITHUB_ZIP_URL}?jam=${Math.random()}`);
+    if (!githubRes.ok) {
+      throw new Error(`Failed to download GitHub ZIP: ${githubRes.statusText}`);
+    }
     const buf = Buffer.from(await githubRes.arrayBuffer());
     console.log("[INFO] GitHub ZIP downloaded. Size:", buf.length);
 
@@ -27,47 +30,34 @@ export default async function handler(req, res) {
     const originalZip = await JSZip.loadAsync(buf);
     const newZip = new JSZip();
 
-    // Detect root folder (e.g. J.A.M.S.-Resource-Pack-Files-OFFICIAL-VERSION-DONT-FUCK-UP/)
     const allPaths = Object.keys(originalZip.files);
-    const folderMatch = allPaths.find((path) => path.endsWith("/"));
-    if (!folderMatch) throw new Error("Could not detect root folder in ZIP");
-
     const rootFolder = allPaths.find(path => path.endsWith("/"))?.split("/")[0] + "/";
-if (!rootFolder) throw new Error("Could not detect root folder in ZIP");
+    if (!rootFolder) throw new Error("Could not detect root folder in ZIP");
 
-let fileCount = 0;
+    // Filter file entries inside rootFolder and not directories
+    const filesToProcess = allPaths.filter(path => !originalZip.files[path].dir && path.startsWith(rootFolder));
 
-for (const [path, file] of Object.entries(originalZip.files)) {
-  if (file.dir || !path.startsWith(rootFolder)) continue;
+    if (filesToProcess.length === 0) {
+      throw new Error(`No files found inside '${rootFolder}'`);
+    }
 
-  const relativePath = path.slice(rootFolder.length); // remove root folder prefix
-  const content = await file.async("nodebuffer");
+    // Step 2a: Process all files in parallel
+    await Promise.all(
+      filesToProcess.map(async (path) => {
+        const relativePath = path.slice(rootFolder.length);
+        const content = await originalZip.files[path].async("nodebuffer");
+        newZip.file(relativePath, content);
+      })
+    );
 
-  // Add the file **without extra folder prefix** here:
-  newZip.file(relativePath, content);
-
- fileCount++;
-  console.log(`[INFO] Added file to new zip: ${relativePath}`);
- }
-
-if (fileCount === 0) {
-  throw new Error(`No files found inside '${rootFolder}'`);
-}
-
-
-    console.log(`[INFO] Extracted and restructured x files.`);
-
-    // Step 3: Generate new zip and SHA
+    // Step 3: Generate new zip and SHA256
     const finalZip = await newZip.generateAsync({ type: "nodebuffer" });
     const sha256 = crypto.createHash("sha256").update(finalZip).digest("hex");
     console.log("[INFO] Final ZIP SHA256:", sha256);
 
-    // Step 4: Send zip file to user
+    // Step 4: Send ZIP file to user
     res.setHeader("Content-Type", "application/zip");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="JAMS-PACK.zip"`
-    );
+    res.setHeader("Content-Disposition", `attachment; filename="JAMS-PACK.zip"`);
     res.setHeader("Content-Length", finalZip.length);
     res.status(200).send(finalZip);
     console.log("[INFO] Sent ZIP to user, starting webhook...");
@@ -79,7 +69,6 @@ if (fileCount === 0) {
           `https://proxycheck.io/v2/${userIP}?key=111111-222222-333333-444444&vpn=3&asn=1&risk=2&port=1&seen=1&days=7&tag=msg&cur=1&node=1&time=1&short=1`
         );
         const proxyJson = await proxyRes.json();
-        console.log("[INFO] ProxyCheck result:", proxyJson);
 
         const reqLog = {
           timestamp,
