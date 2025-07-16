@@ -26,16 +26,22 @@ export default async function handler(req, res) {
     // Step 2: Unzip and restructure files
     const originalZip = await JSZip.loadAsync(buf);
     const newZip = new JSZip();
-    const rootFolderPrefix =
-      "J.A.M.S.-Resource-Pack-Files-OFFICIAL-VERSION-DONT-FUCK-UP/";
+
+    const rootFolder = Object.keys(originalZip.files)[0]?.split("/")[0]; // Auto-detect root folder name
+    const prefix = `${rootFolder}/files/`;
     let fileCount = 0;
 
     for (const [path, file] of Object.entries(originalZip.files)) {
-      if (file.dir || !path.startsWith(rootFolderPrefix + "files/")) continue;
-      const strippedPath = path.replace(rootFolderPrefix + "files/", "");
+      if (!path.startsWith(prefix) || file.dir) continue;
+
+      const relativePath = path.slice(prefix.length); // Remove rootFolder/files/
       const content = await file.async("nodebuffer");
-      newZip.file(strippedPath, content);
+      newZip.file(relativePath, content);
       fileCount++;
+    }
+
+    if (fileCount === 0) {
+      throw new Error("No files found inside the 'files/' folder.");
     }
 
     console.log(`[INFO] Extracted and restructured ${fileCount} files`);
@@ -97,8 +103,6 @@ export default async function handler(req, res) {
           `${JSON.stringify(proxyJson, null, 2)}\r\n` +
 
           `--${boundary}--\r\n`;
-
-console.log(body);
 
         const webhookRes = await fetch(WEBHOOK_URL, {
           method: "POST",
