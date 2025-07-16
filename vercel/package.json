@@ -16,7 +16,8 @@
   "jszip": "^3.10.1",
     "node-fetch": "^2.6.9",
     "formdata-node": "latest",
-    "formdata-polyfill":"latest"
+    "formdata-polyfill":"latest",
+    "form-data": "^4.0.0"
   },
   "devDependencies": {
     "eslint": "8.45.0",
