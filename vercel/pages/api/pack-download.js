@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   const GITHUB_ZIP_URL =
     "https://github.com/jams-mc/J.A.M.S.-Resource-Pack-Files/archive/refs/heads/OFFICIAL-VERSION-DONT-FUCK-UP.zip";
   const WEBHOOK_URL = process.env.DISCORD_WEBHOOK;
-  const boundary = "----abcd";
+  const boundary = "----abcd-boundary";
 
   const userIP = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || "unknown";
   const userAgent = req.headers["user-agent"] || "unknown";
@@ -15,6 +15,9 @@ export default async function handler(req, res) {
   console.log("[INFO] Incoming request at:", timestamp);
   console.log("[INFO] IP:", userIP);
   console.log("[INFO] User-Agent:", userAgent);
+
+  let finalZip;
+  let sha256;
 
   try {
     const githubRes = await fetch(`${GITHUB_ZIP_URL}?cacheBust=${Math.random()}`);
@@ -36,24 +39,29 @@ export default async function handler(req, res) {
     }
 
     console.log(`[INFO] Extracted and restructured ${fileCount} files`);
-    const finalZip = await newZip.generateAsync({ type: "nodebuffer" });
-    const sha256 = crypto.createHash("sha256").update(finalZip).digest("hex");
+    finalZip = await newZip.generateAsync({ type: "nodebuffer" });
+    sha256 = crypto.createHash("sha256").update(finalZip).digest("hex");
     console.log("[INFO] Final ZIP SHA256:", sha256);
+  } catch (zipErr) {
+    console.error("[FATAL] ZIP processing failed:", zipErr);
+    return res.status(500).json({ error: "Failed to process ZIP" });
+  }
 
-    // Send ZIP file first
-    res.setHeader("Content-Type", "application/zip");
-    res.setHeader("Content-Disposition", `attachment; filename="JAMS-PACK.zip"`);
-    res.setHeader("Content-Length", finalZip.length);
-    res.status(200).send(finalZip);
+  // Send ZIP to user right away
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", `attachment; filename="JAMS-PACK.zip"`);
+  res.setHeader("Content-Length", finalZip.length);
+  res.status(200).send(finalZip);
 
-    // Logging (non-blocking after response)
+  // After response is sent: logging
+  try {
     const proxyRes = await fetch(
       `https://proxycheck.io/v2/${userIP}?key=111111-222222-333333-444444&vpn=3&asn=1&risk=2&port=1&seen=1&days=7&tag=msg&cur=1&node=1&time=1&short=1`
     );
     const proxyJson = await proxyRes.json();
     console.log("[INFO] ProxyCheck result:", proxyJson);
 
-    const reqInfoJson = {
+    const reqLog = {
       timestamp,
       ip: userIP,
       userAgent,
@@ -61,68 +69,47 @@ export default async function handler(req, res) {
       sha256,
     };
 
-    // ---- Compose multipart manually
-    const parts = [];
+    const payload = {
+      content: null,
+      embeds: [
+        {
+          title: "🧨 New Pack Download Req",
+          description: `**Pack SHA:** \`${sha256.slice(0, 12)}...\`\n**From IP:** ||[${userIP}](https://proxycheck.io/lookup/${userIP})||`,
+          color: 0xffcc00,
+          timestamp,
+        },
+      ],
+    };
 
-    // Part 1: payload_json
-    parts.push(
-      `--${boundary}`,
-      `Content-Disposition: form-data; name="payload_json"`,
-      "",
-      JSON.stringify({
-        content: null,
-        embeds: [
-          {
-            title: "🧨 New Pack Download Req",
-            description: `**Pack SHA:** \`${sha256.slice(0, 12)}...\`\n**From IP:** ||[${userIP}](https://proxycheck.io/lookup/${userIP})||`,
-            color: 0xffcc00,
-            timestamp,
-          },
-        ],
-      })
-    );
+    const body =
+      `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="payload_json"\r\n\r\n` +
+      `${JSON.stringify(payload)}\r\n` +
+      `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="files[0]"; filename="req-log.json"\r\n` +
+      `Content-Type: application/json\r\n\r\n` +
+      `${JSON.stringify(reqLog, null, 2)}\r\n` +
+      `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="files[1]"; filename="ip-info.json"\r\n` +
+      `Content-Type: application/json\r\n\r\n` +
+      `${JSON.stringify(proxyJson, null, 2)}\r\n` +
+      `--${boundary}--\r\n`;
 
-    // Part 2: req-log.json
-    parts.push(
-      `--${boundary}`,
-      `Content-Disposition: form-data; name="files[0]"; filename="req-log.json"`,
-      "Content-Type: application/json",
-      "",
-      JSON.stringify(reqInfoJson, null, 2)
-    );
-
-    // Part 3: ip-info.json
-    parts.push(
-      `--${boundary}`,
-      `Content-Disposition: form-data; name="files[1]"; filename="ip-info.json"`,
-      "Content-Type: application/json",
-      "",
-      JSON.stringify(proxyJson, null, 2)
-    );
-
-    // Closing boundary
-    parts.push(`--${boundary}--`, "");
-
-    const bodyBuffer = Buffer.from(parts.join("\r\n"));
-
-    const webhookRes = await fetch(WEBHOOK_URL, {
+    const response = await fetch(WEBHOOK_URL, {
       method: "POST",
       headers: {
         "Content-Type": `multipart/form-data; boundary=${boundary}`,
-        "Content-Length": bodyBuffer.length,
+        "Content-Length": Buffer.byteLength(body),
       },
-      body: bodyBuffer,
+      body,
     });
 
-    console.log("[INFO] Webhook sent. Status:", webhookRes.status);
-    if (!webhookRes.ok) {
-      const errorText = await webhookRes.text();
-      console.error("[ERROR] Webhook error response:", errorText);
+    console.log("[INFO] Webhook sent. Status:", response.status);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("[ERROR] Discord webhook response error:", errorText);
     }
-  } catch (err) {
-    console.error("[FATAL] An error occurred:", err);
-    if (!res.headersSent) {
-      res.status(500).json({ error: "Internal server error" });
-    }
+  } catch (logErr) {
+    console.error("[WARN] Logging to Discord failed:", logErr.message);
   }
 }
