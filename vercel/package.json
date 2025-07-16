@@ -17,7 +17,8 @@
     "node-fetch": "^2.6.9",
     "formdata-node": "latest",
     "formdata-polyfill":"latest",
-    "form-data": "^4.0.0"
+    "form-data": "^4.0.0",
+    "@vercel/blob":"latest"
   },
   "devDependencies": {
     "eslint": "8.45.0",
