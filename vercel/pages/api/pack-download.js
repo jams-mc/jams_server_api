@@ -46,16 +46,16 @@ for (const [path, file] of Object.entries(originalZip.files)) {
   // Add the file **without extra folder prefix** here:
   newZip.file(relativePath, content);
 
-  fileCount++;
+  // fileCount++;
 //  console.log(`[INFO] Added file to new zip: ${relativePath}`);
-}
+// }
 
-if (fileCount === 0) {
-  throw new Error(`No files found inside '${rootFolder}'`);
-}
+//if (fileCount === 0) {
+//  throw new Error(`No files found inside '${rootFolder}'`);
+//}
 
 
-    console.log(`[INFO] Extracted and restructured ${fileCount} files.`);
+    console.log(`[INFO] Extracted and restructured x files.`);
 
     // Step 3: Generate new zip and SHA
     const finalZip = await newZip.generateAsync({ type: "nodebuffer" });
