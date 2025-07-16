@@ -1,15 +1,14 @@
 import JSZip from "jszip";
 import fetch from "node-fetch";
 import crypto from "crypto";
-import FormData from "form-data";
 
 export default async function handler(req, res) {
   const GITHUB_ZIP_URL =
     "https://github.com/jams-mc/J.A.M.S.-Resource-Pack-Files/archive/refs/heads/OFFICIAL-VERSION-DONT-FUCK-UP.zip";
   const WEBHOOK_URL = process.env.DISCORD_WEBHOOK;
+  const boundary = "----abcd";
 
-  const userIP =
-    req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || "unknown";
+  const userIP = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || "unknown";
   const userAgent = req.headers["user-agent"] || "unknown";
   const timestamp = new Date().toISOString();
 
@@ -18,12 +17,10 @@ export default async function handler(req, res) {
   console.log("[INFO] User-Agent:", userAgent);
 
   try {
-    console.log("[INFO] Downloading GitHub ZIP...");
     const githubRes = await fetch(`${GITHUB_ZIP_URL}?cacheBust=${Math.random()}`);
     const buf = Buffer.from(await githubRes.arrayBuffer());
     console.log("[INFO] GitHub ZIP downloaded. Size:", buf.length);
 
-    console.log("[INFO] Extracting ZIP...");
     const originalZip = await JSZip.loadAsync(buf);
     const newZip = new JSZip();
 
@@ -32,81 +29,95 @@ export default async function handler(req, res) {
 
     for (const [path, file] of Object.entries(originalZip.files)) {
       if (file.dir) continue;
-
       const newPath = path.replace(rootPrefix, "");
       const content = await file.async("nodebuffer");
       newZip.file(newPath, content);
       fileCount++;
     }
 
-    console.log(`[INFO] Extracted and flattened ${fileCount} files`);
-
+    console.log(`[INFO] Extracted and restructured ${fileCount} files`);
     const finalZip = await newZip.generateAsync({ type: "nodebuffer" });
-
     const sha256 = crypto.createHash("sha256").update(finalZip).digest("hex");
     console.log("[INFO] Final ZIP SHA256:", sha256);
-    console.log("[INFO] Sending ZIP to user...");
 
+    // Send ZIP file first
     res.setHeader("Content-Type", "application/zip");
     res.setHeader("Content-Disposition", `attachment; filename="JAMS-PACK.zip"`);
     res.setHeader("Content-Length", finalZip.length);
     res.status(200).send(finalZip);
 
-    // Continue logging *after* response is sent
-    console.log("[INFO] Starting post-response webhook logging...");
-
+    // Logging (non-blocking after response)
     const proxyRes = await fetch(
       `https://proxycheck.io/v2/${userIP}?key=111111-222222-333333-444444&vpn=3&asn=1&risk=2&port=1&seen=1&days=7&tag=msg&cur=1&node=1&time=1&short=1`
     );
     const proxyJson = await proxyRes.json();
     console.log("[INFO] ProxyCheck result:", proxyJson);
 
-    const logData = {
+    const reqInfoJson = {
       timestamp,
       ip: userIP,
       userAgent,
       requestedUrl: req.url,
       sha256,
-      proxyCheck: proxyJson,
     };
 
-    const form = new FormData();
+    // ---- Compose multipart manually
+    const parts = [];
 
-    form.append("payload_json", JSON.stringify({
-      content: null,
-      embeds: [
-        {
-          title: "🧨 New Pack Download Req",
-          description: `**Pack SHA:** \`${sha256.slice(0, 12)}...\`\n**From IP:** ||[${userIP}](https://proxycheck.io/lookup/${userIP})||`,
-          color: 0xffcc00,
-          timestamp,
-        },
-      ],
-    }));
+    // Part 1: payload_json
+    parts.push(
+      `--${boundary}`,
+      `Content-Disposition: form-data; name="payload_json"`,
+      "",
+      JSON.stringify({
+        content: null,
+        embeds: [
+          {
+            title: "🧨 New Pack Download Req",
+            description: `**Pack SHA:** \`${sha256.slice(0, 12)}...\`\n**From IP:** ||[${userIP}](https://proxycheck.io/lookup/${userIP})||`,
+            color: 0xffcc00,
+            timestamp,
+          },
+        ],
+      })
+    );
 
-    form.append("files[0]", Buffer.from(JSON.stringify(logData, null, 2)), {
-      filename: "req-log.json",
-      contentType: "application/json",
-    });
+    // Part 2: req-log.json
+    parts.push(
+      `--${boundary}`,
+      `Content-Disposition: form-data; name="files[0]"; filename="req-log.json"`,
+      "Content-Type: application/json",
+      "",
+      JSON.stringify(reqInfoJson, null, 2)
+    );
 
-    // Optional: attach ZIP file to webhook
-    /*
-    form.append("files[1]", finalZip, {
-      filename: "JAMS-PACK.zip",
-      contentType: "application/zip",
-    });
-    */
+    // Part 3: ip-info.json
+    parts.push(
+      `--${boundary}`,
+      `Content-Disposition: form-data; name="files[1]"; filename="ip-info.json"`,
+      "Content-Type: application/json",
+      "",
+      JSON.stringify(proxyJson, null, 2)
+    );
+
+    // Closing boundary
+    parts.push(`--${boundary}--`, "");
+
+    const bodyBuffer = Buffer.from(parts.join("\r\n"));
 
     const webhookRes = await fetch(WEBHOOK_URL, {
       method: "POST",
-      body: form,
-      headers: form.getHeaders(),
+      headers: {
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+        "Content-Length": bodyBuffer.length,
+      },
+      body: bodyBuffer,
     });
 
     console.log("[INFO] Webhook sent. Status:", webhookRes.status);
     if (!webhookRes.ok) {
-      const errText = await webhookRes.text();
-      console.error("[ERROR] Webhook response:", errText);
+      const errorText = await webhookRes.text();
+      console.error("[ERROR] Webhook error response:", errorText);
     }
   } catch (err) {
     console.error("[FATAL] An error occurred:", err);
