@@ -20,7 +20,10 @@ export default async function handler(req, res) {
   try {
     // Step 1: Download GitHub ZIP
     console.log("[INFO] Fetching GitHub ZIP:", GITHUB_ZIP_URL);
-    const githubRes = await fetch(`${GITHUB_ZIP_URL}?jam=${Math.random()}`);
+
+    const githubRes = await fetch(
+      `${GITHUB_ZIP_URL}?jam=${Math.random()}`
+    );
 
     if (!githubRes.ok) {
       const text = await githubRes.text();
@@ -34,6 +37,7 @@ export default async function handler(req, res) {
         .json({ error: "Failed to download resource pack from GitHub" });
     }
 
+    // Read entire zip as a single Buffer
     const buf = Buffer.from(await githubRes.arrayBuffer());
     console.log("[INFO] GitHub ZIP downloaded. Size:", buf.length);
 
@@ -41,9 +45,8 @@ export default async function handler(req, res) {
     const originalZip = await JSZip.loadAsync(buf);
     const newZip = new JSZip();
 
-    // Detect root folder
     const allPaths = Object.keys(originalZip.files);
-    const folderMatch = allPaths.find((path) => path.endsWith("/"));
+    const folderMatch = allPaths.find((p) => p.endsWith("/"));
     if (!folderMatch) {
       console.error("[ERROR] Could not detect root folder in ZIP");
       return res.status(500).json({ error: "Invalid ZIP structure" });
@@ -52,7 +55,7 @@ export default async function handler(req, res) {
     const rootFolder = folderMatch.split("/")[0] + "/";
     console.log("[INFO] Detected root folder in ZIP:", rootFolder);
 
-    // Check for pack.mcmeta
+    // Validate that pack.mcmeta exists
     if (!originalZip.file(`${rootFolder}pack.mcmeta`)) {
       console.error("[ERROR] pack.mcmeta not found in ZIP");
       return res
@@ -68,8 +71,8 @@ export default async function handler(req, res) {
 
       const relativePath = path.slice(rootFolder.length);
       const newPath = `JAMS-PACK/${relativePath}`;
-      const content = await file.async("nodebuffer");
 
+      const content = await file.async("nodebuffer");
       newZip.file(newPath, content);
       console.log(`[INFO] Added file to new zip: ${newPath}`);
       fileCount++;
@@ -84,18 +87,30 @@ export default async function handler(req, res) {
 
     // Step 3: Generate new zip and SHA
     const finalZip = await newZip.generateAsync({ type: "nodebuffer" });
+    console.log("[DEBUG] finalZip size:", finalZip.length);
+
     const sha256 = crypto.createHash("sha256").update(finalZip).digest("hex");
     console.log("[INFO] Final ZIP SHA256:", sha256);
 
     // Step 4: Send zip file to user
-    res.setHeader("Content-Type", "application/zip");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="JAMS-PACK.zip"`
-    );
-    res.setHeader("Content-Length", finalZip.length);
-    res.status(200).send(finalZip);
-    console.log("[INFO] Sent ZIP to user, starting webhook...");
+    try {
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="JAMS-PACK.zip"`
+      );
+      res.setHeader("Accept-Ranges", "bytes"); // Helps browsers with partial downloads
+
+      console.log("[INFO] Sending zip file to user...");
+      res.status(200).send(finalZip);
+      console.log("[INFO] Zip successfully sent to user.");
+    } catch (sendErr) {
+      console.error("[ERROR] Failed to send ZIP to user:", sendErr);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to send zip file" });
+      }
+      return;
+    }
 
     // Step 5: Run webhook in background
     (async () => {
