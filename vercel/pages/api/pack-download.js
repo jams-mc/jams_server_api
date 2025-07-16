@@ -47,7 +47,7 @@ for (const [path, file] of Object.entries(originalZip.files)) {
   newZip.file(relativePath, content);
 
   fileCount++;
-  console.log(`[INFO] Added file to new zip: ${relativePath}`);
+//  console.log(`[INFO] Added file to new zip: ${relativePath}`);
 }
 
 if (fileCount === 0) {
