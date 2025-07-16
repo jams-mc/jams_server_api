@@ -27,19 +27,31 @@ export default async function handler(req, res) {
     const originalZip = await JSZip.loadAsync(buf);
     const newZip = new JSZip();
 
-    // Detect root folder (e.g., J.A.M.S.-Resource-Pack-Files-OFFICIAL-VERSION-DONT-FUCK-UP/)
+    // Detect root folder (e.g. J.A.M.S.-Resource-Pack-Files-OFFICIAL-VERSION-DONT-FUCK-UP/)
     const allPaths = Object.keys(originalZip.files);
-    const rootFolder = allPaths.find(path => path.endsWith("/"))?.split("/")[0] + "/";
-    if (!rootFolder) throw new Error("Could not detect root folder in ZIP");
+    const folderMatch = allPaths.find((path) => path.endsWith("/"));
+    if (!folderMatch) throw new Error("Could not detect root folder in ZIP");
+
+    const rootFolder = folderMatch.split("/")[0] + "/";
+    console.log("[INFO] Detected root folder in ZIP:", rootFolder);
+
+    // Confirm pack.mcmeta exists
+    if (!originalZip.file(`${rootFolder}pack.mcmeta`)) {
+      throw new Error("pack.mcmeta not found in ZIP");
+    }
+    console.log("[INFO] pack.mcmeta found.");
 
     let fileCount = 0;
 
     for (const [path, file] of Object.entries(originalZip.files)) {
       if (file.dir || !path.startsWith(rootFolder)) continue;
 
-      const relativePath = path.slice(rootFolder.length); // remove root folder prefix
+      const relativePath = path.slice(rootFolder.length);
+      const newPath = `JAMS-PACK/${relativePath}`;
       const content = await file.async("nodebuffer");
-      newZip.file(relativePath, content);
+
+      newZip.file(newPath, content);
+      console.log(`[INFO] Added file to new zip: ${newPath}`);
       fileCount++;
     }
 
@@ -47,7 +59,7 @@ export default async function handler(req, res) {
       throw new Error(`No files found inside '${rootFolder}'`);
     }
 
-    console.log(`[INFO] Extracted and restructured ${fileCount} files`);
+    console.log(`[INFO] Extracted and restructured ${fileCount} files.`);
 
     // Step 3: Generate new zip and SHA
     const finalZip = await newZip.generateAsync({ type: "nodebuffer" });
@@ -56,7 +68,10 @@ export default async function handler(req, res) {
 
     // Step 4: Send zip file to user
     res.setHeader("Content-Type", "application/zip");
-    res.setHeader("Content-Disposition", `attachment; filename="JAMS-PACK.zip"`);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="JAMS-PACK.zip"`
+    );
     res.setHeader("Content-Length", finalZip.length);
     res.status(200).send(finalZip);
     console.log("[INFO] Sent ZIP to user, starting webhook...");
