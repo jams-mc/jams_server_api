@@ -32,32 +32,28 @@ export default async function handler(req, res) {
     const folderMatch = allPaths.find((path) => path.endsWith("/"));
     if (!folderMatch) throw new Error("Could not detect root folder in ZIP");
 
-    const rootFolder = folderMatch.split("/")[0] + "/";
-    console.log("[INFO] Detected root folder in ZIP:", rootFolder);
+    const rootFolder = allPaths.find(path => path.endsWith("/"))?.split("/")[0] + "/";
+if (!rootFolder) throw new Error("Could not detect root folder in ZIP");
 
-    // Confirm pack.mcmeta exists
-    if (!originalZip.file(`${rootFolder}pack.mcmeta`)) {
-      throw new Error("pack.mcmeta not found in ZIP");
-    }
-    console.log("[INFO] pack.mcmeta found.");
+let fileCount = 0;
 
-    let fileCount = 0;
+for (const [path, file] of Object.entries(originalZip.files)) {
+  if (file.dir || !path.startsWith(rootFolder)) continue;
 
-    for (const [path, file] of Object.entries(originalZip.files)) {
-      if (file.dir || !path.startsWith(rootFolder)) continue;
+  const relativePath = path.slice(rootFolder.length); // remove root folder prefix
+  const content = await file.async("nodebuffer");
 
-      const relativePath = path.slice(rootFolder.length);
-      const newPath = `JAMS-PACK/${relativePath}`;
-      const content = await file.async("nodebuffer");
+  // Add the file **without extra folder prefix** here:
+  newZip.file(relativePath, content);
 
-      newZip.file(newPath, content);
-      console.log(`[INFO] Added file to new zip: ${newPath}`);
-      fileCount++;
-    }
+  fileCount++;
+  console.log(`[INFO] Added file to new zip: ${relativePath}`);
+}
 
-    if (fileCount === 0) {
-      throw new Error(`No files found inside '${rootFolder}'`);
-    }
+if (fileCount === 0) {
+  throw new Error(`No files found inside '${rootFolder}'`);
+}
+
 
     console.log(`[INFO] Extracted and restructured ${fileCount} files.`);
 
