@@ -112,7 +112,7 @@ export default async function handler(req, res) {
   }
 
   // Optional: Check size for Vercel limits (~5MB typical for free serverless)
-  const MAX_SIZE = 5 * 1024 * 1024;
+  const MAX_SIZE = 250 * 1024 * 1024;
   if (finalZip.length > MAX_SIZE) {
     console.error(
       `[ERROR] Final zip size ${finalZip.length} exceeds limit (${MAX_SIZE}).`
