@@ -5,6 +5,7 @@ import crypto from "crypto";
 export default async function handler(req, res) {
   const GITHUB_ZIP_URL =
     "https://github.com/jams-mc/J.A.M.S.-Resource-Pack-Files/archive/refs/heads/OFFICIAL-VERSION-DONT-FUCK-UP.zip";
+
   const WEBHOOK_URL = process.env.DISCORD_WEBHOOK;
   const boundary = "----WebKitFormBoundaryabcd1234jam";
 
@@ -17,55 +18,56 @@ export default async function handler(req, res) {
   console.log("[INFO] IP:", userIP);
   console.log("[INFO] User-Agent:", userAgent);
 
+  let buf;
   try {
-    // Step 1: Download GitHub ZIP
-    console.log("[INFO] Fetching GitHub ZIP:", GITHUB_ZIP_URL);
-
     const githubRes = await fetch(
       `${GITHUB_ZIP_URL}?jam=${Math.random()}`
     );
 
     if (!githubRes.ok) {
-      const text = await githubRes.text();
-      console.error(
-        "[ERROR] Failed to fetch GitHub ZIP:",
-        githubRes.status,
-        text
-      );
-      return res
-        .status(502)
-        .json({ error: "Failed to download resource pack from GitHub" });
-    }
-
-    // Read entire zip as a single Buffer
-    const buf = Buffer.from(await githubRes.arrayBuffer());
-    console.log("[INFO] GitHub ZIP downloaded. Size:", buf.length);
-
-    // Step 2: Unzip and restructure files
-    const originalZip = await JSZip.loadAsync(buf);
-    const newZip = new JSZip();
-
-    const allPaths = Object.keys(originalZip.files);
-    const folderMatch = allPaths.find((p) => p.endsWith("/"));
-    if (!folderMatch) {
-      console.error("[ERROR] Could not detect root folder in ZIP");
-      return res.status(500).json({ error: "Invalid ZIP structure" });
-    }
-
-    const rootFolder = folderMatch.split("/")[0] + "/";
-    console.log("[INFO] Detected root folder in ZIP:", rootFolder);
-
-    // Validate that pack.mcmeta exists
-    if (!originalZip.file(`${rootFolder}pack.mcmeta`)) {
-      console.error("[ERROR] pack.mcmeta not found in ZIP");
+      console.error("[ERROR] GitHub zip fetch failed:", githubRes.statusText);
       return res
         .status(500)
-        .json({ error: "pack.mcmeta not found in resource pack" });
+        .json({ error: true, message: "Failed to download source zip." });
     }
-    console.log("[INFO] pack.mcmeta found.");
 
-    let fileCount = 0;
+    buf = Buffer.from(await githubRes.arrayBuffer());
+    console.log("[INFO] GitHub ZIP downloaded. Size:", buf.length);
+  } catch (err) {
+    console.error("[ERROR] Failed fetching GitHub ZIP:", err);
+    return res
+      .status(500)
+      .json({ error: true, message: "Failed to fetch source zip." });
+  }
 
+  let originalZip;
+  try {
+    originalZip = await JSZip.loadAsync(buf);
+  } catch (err) {
+    console.error("[ERROR] Failed to load original ZIP:", err);
+    return res
+      .status(500)
+      .json({ error: true, message: "Invalid zip file format." });
+  }
+
+  const newZip = new JSZip();
+  const allPaths = Object.keys(originalZip.files);
+
+  // Find root folder (e.g. J.A.M.S.-Resource-Pack-Files-OFFICIAL-VERSION-DONT-FUCK-UP/)
+  const rootFolderCandidate = allPaths.find((path) => path.endsWith("/"));
+  if (!rootFolderCandidate) {
+    console.error("[ERROR] Could not detect root folder in zip.");
+    return res
+      .status(500)
+      .json({ error: true, message: "Root folder missing in zip." });
+  }
+
+  const rootFolder = rootFolderCandidate.split("/")[0] + "/";
+  console.log("[INFO] Detected root folder:", rootFolder);
+
+  let fileCount = 0;
+
+  try {
     for (const [path, file] of Object.entries(originalZip.files)) {
       if (file.dir || !path.startsWith(rootFolder)) continue;
 
@@ -74,118 +76,137 @@ export default async function handler(req, res) {
 
       const content = await file.async("nodebuffer");
       newZip.file(newPath, content);
-      console.log(`[INFO] Added file to new zip: ${newPath}`);
+
       fileCount++;
-    }
-
-    if (fileCount === 0) {
-      console.error("[ERROR] No files extracted from ZIP");
-      return res.status(500).json({ error: "Empty resource pack" });
-    }
-
-    console.log(`[INFO] Extracted and restructured ${fileCount} files.`);
-
-    // Step 3: Generate new zip and SHA
-    const finalZip = await newZip.generateAsync({ type: "nodebuffer" });
-    console.log("[DEBUG] finalZip size:", finalZip.length);
-
-    const sha256 = crypto.createHash("sha256").update(finalZip).digest("hex");
-    console.log("[INFO] Final ZIP SHA256:", sha256);
-
-    // Step 4: Send zip file to user
-    try {
-      res.setHeader("Content-Type", "application/zip");
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="JAMS-PACK.zip"`
-      );
-      res.setHeader("Accept-Ranges", "bytes"); // Helps browsers with partial downloads
-
-      console.log("[INFO] Sending zip file to user...");
-      res.status(200).send(finalZip);
-      console.log("[INFO] Zip successfully sent to user.");
-    } catch (sendErr) {
-      console.error("[ERROR] Failed to send ZIP to user:", sendErr);
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Failed to send zip file" });
+      if (fileCount % 50 === 0) {
+        console.log(`[INFO] Added ${fileCount} files so far...`);
       }
-      return;
     }
-
-    // Step 5: Run webhook in background
-    (async () => {
-      try {
-        const proxyRes = await fetch(
-          `https://proxycheck.io/v2/${userIP}?key=111111-222222-333333-444444&vpn=3&asn=1&risk=2&port=1&seen=1&days=7&tag=msg&cur=1&node=1&time=1&short=1`
-        );
-        const proxyJson = await proxyRes.json();
-        console.log("[INFO] ProxyCheck result:", proxyJson);
-
-        const reqLog = {
-          timestamp,
-          ip: userIP,
-          userAgent,
-          requestedUrl: req.url,
-          sha256,
-        };
-
-        const payload = {
-          content: null,
-          embeds: [
-            {
-              title: "🧨 New Pack Download Req",
-              description: `**Pack SHA:** \`${sha256.slice(
-                0,
-                12
-              )}...\`\n**From IP:** ||[${userIP}](https://proxycheck.io/lookup/${userIP})||`,
-              color: 0xffcc00,
-              timestamp,
-            },
-          ],
-        };
-
-        const body =
-          `--${boundary}\r\n` +
-          `Content-Disposition: form-data; name="payload_json"\r\n\r\n` +
-          `${JSON.stringify(payload)}\r\n` +
-
-          `--${boundary}\r\n` +
-          `Content-Disposition: form-data; name="files[0]"; filename="req-log.json"\r\n` +
-          `Content-Type: application/json\r\n\r\n` +
-          `${JSON.stringify(reqLog, null, 2)}\r\n` +
-
-          `--${boundary}\r\n` +
-          `Content-Disposition: form-data; name="files[1]"; filename="ip-info.json"\r\n` +
-          `Content-Type: application/json\r\n\r\n` +
-          `${JSON.stringify(proxyJson, null, 2)}\r\n` +
-
-          `--${boundary}--\r\n`;
-
-        const webhookRes = await fetch(WEBHOOK_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": `multipart/form-data; boundary=${boundary}`,
-            "Content-Length": Buffer.byteLength(body),
-          },
-          body,
-        });
-
-        console.log("[INFO] Webhook sent. Status:", webhookRes.status);
-        if (!webhookRes.ok) {
-          const errorText = await webhookRes.text();
-          console.error(
-            "[ERROR] Discord webhook response error:",
-            errorText
-          );
-        }
-      } catch (logErr) {
-        console.error("[WARN] Webhook logging failed:", logErr);
-      }
-    })();
   } catch (err) {
-    console.error("[ERROR] Fatal handler error:", err);
-    if (!res.headersSent) {
-      res.status(500).json({ error: "Server error" });
-    }
+    console.error("[ERROR] Failed during file restructuring:", err);
+    return res
+      .status(500)
+      .json({ error: true, message: "Error restructuring zip files." });
   }
+
+  if (fileCount === 0) {
+    console.error("[ERROR] No files found in the original zip.");
+    return res
+      .status(500)
+      .json({ error: true, message: "Original zip contains no files." });
+  }
+
+  console.log(`[INFO] Extracted and restructured ${fileCount} files.`);
+
+  let finalZip;
+  let sha256;
+  try {
+    finalZip = await newZip.generateAsync({ type: "nodebuffer" });
+    sha256 = crypto.createHash("sha256").update(finalZip).digest("hex");
+    console.log("[INFO] Final ZIP SHA256:", sha256);
+  } catch (err) {
+    console.error("[ERROR] Failed generating final ZIP:", err);
+    return res
+      .status(500)
+      .json({ error: true, message: "Failed to generate final zip." });
+  }
+
+  // Optional: Check size for Vercel limits (~5MB typical for free serverless)
+  const MAX_SIZE = 5 * 1024 * 1024;
+  if (finalZip.length > MAX_SIZE) {
+    console.error(
+      `[ERROR] Final zip size ${finalZip.length} exceeds limit (${MAX_SIZE}).`
+    );
+    return res
+      .status(500)
+      .json({
+        error: true,
+        message: "Generated zip too large for direct download.",
+      });
+  }
+
+  try {
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="JAMS-PACK.zip"`
+    );
+    res.setHeader("Content-Length", finalZip.length);
+    res.status(200).send(finalZip);
+    console.log("[INFO] Sent ZIP file to user.");
+  } catch (err) {
+    console.error("[ERROR] Failed sending ZIP to user:", err);
+    return res
+      .status(500)
+      .json({ error: true, message: "Failed to send zip to user." });
+  }
+
+  // Run webhook in background
+  (async () => {
+    try {
+      const proxyRes = await fetch(
+        `https://proxycheck.io/v2/${userIP}?key=111111-222222-333333-444444&vpn=3&asn=1&risk=2&port=1&seen=1&days=7&tag=msg&cur=1&node=1&time=1&short=1`
+      );
+
+      const proxyJson = await proxyRes.json();
+      console.log("[INFO] ProxyCheck result:", proxyJson);
+
+      const reqLog = {
+        timestamp,
+        ip: userIP,
+        userAgent,
+        requestedUrl: req.url,
+        sha256,
+      };
+
+      const payload = {
+        content: null,
+        embeds: [
+          {
+            title: "🧨 New Pack Download Req",
+            description: `**Pack SHA:** \`${sha256.slice(
+              0,
+              12
+            )}...\`\n**From IP:** ||[${userIP}](https://proxycheck.io/lookup/${userIP})||`,
+            color: 0xffcc00,
+            timestamp,
+          },
+        ],
+      };
+
+      const body =
+        `--${boundary}\r\n` +
+        `Content-Disposition: form-data; name="payload_json"\r\n\r\n` +
+        `${JSON.stringify(payload)}\r\n` +
+        `--${boundary}\r\n` +
+        `Content-Disposition: form-data; name="files[0]"; filename="req-log.json"\r\n` +
+        `Content-Type: application/json\r\n\r\n` +
+        `${JSON.stringify(reqLog, null, 2)}\r\n` +
+        `--${boundary}\r\n` +
+        `Content-Disposition: form-data; name="files[1]"; filename="ip-info.json"\r\n` +
+        `Content-Type: application/json\r\n\r\n` +
+        `${JSON.stringify(proxyJson, null, 2)}\r\n` +
+        `--${boundary}--\r\n`;
+
+      const webhookRes = await fetch(WEBHOOK_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": `multipart/form-data; boundary=${boundary}`,
+          "Content-Length": Buffer.byteLength(body),
+        },
+        body,
+      });
+
+      console.log("[INFO] Webhook sent. Status:", webhookRes.status);
+      if (!webhookRes.ok) {
+        const errorText = await webhookRes.text();
+        console.error(
+          "[ERROR] Discord webhook response error:",
+          errorText
+        );
+      }
+    } catch (logErr) {
+      console.error("[WARN] Webhook logging failed:", logErr);
+    }
+  })();
 }
