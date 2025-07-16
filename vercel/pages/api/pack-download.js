@@ -27,21 +27,24 @@ export default async function handler(req, res) {
     const originalZip = await JSZip.loadAsync(buf);
     const newZip = new JSZip();
 
-    const rootFolder = Object.keys(originalZip.files)[0]?.split("/")[0]; // Auto-detect root folder name
-    const prefix = `${rootFolder}/files/`;
+    // Detect root folder (e.g., J.A.M.S.-Resource-Pack-Files-OFFICIAL-VERSION-DONT-FUCK-UP/)
+    const allPaths = Object.keys(originalZip.files);
+    const rootFolder = allPaths.find(path => path.endsWith("/"))?.split("/")[0] + "/";
+    if (!rootFolder) throw new Error("Could not detect root folder in ZIP");
+
     let fileCount = 0;
 
     for (const [path, file] of Object.entries(originalZip.files)) {
-      if (!path.startsWith(prefix) || file.dir) continue;
+      if (file.dir || !path.startsWith(rootFolder)) continue;
 
-      const relativePath = path.slice(prefix.length); // Remove rootFolder/files/
+      const relativePath = path.slice(rootFolder.length); // remove root folder prefix
       const content = await file.async("nodebuffer");
       newZip.file(relativePath, content);
       fileCount++;
     }
 
     if (fileCount === 0) {
-      throw new Error("No files found inside the 'files/' folder.");
+      throw new Error(`No files found inside '${rootFolder}'`);
     }
 
     console.log(`[INFO] Extracted and restructured ${fileCount} files`);
