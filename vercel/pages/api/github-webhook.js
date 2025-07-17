@@ -36,20 +36,56 @@ if (useRepoAuthor && payload.repository) {
 
   switch (event) {
     case "push": {
-      const { repository, ref, commits, pusher } = payload;
-      const branch = ref.split("/").pop();
-      const commitLines = commits
-        .map(c => `[\`${c.id.slice(0, 7)}\`](${c.url}) - ${c.message.split("\n")[0]}`)
-        .join("\n");
-      embeds.push({
-        author,
-        title: `📦 Pushed to \`${repository.name}:${branch}\``,
-        description: `**By:** ${pusher.name}\n\n${commitLines}`,
-        color: 0x00ccff,
-        timestamp: new Date().toISOString(),
-      });
-      break;
+  const { repository, ref, commits, pusher } = payload;
+  const branch = ref.split("/").pop();
+  const commitLines = commits
+    .map(c => `[\`${c.id.slice(0, 7)}\`](${c.url}) - ${c.message.split("\n")[0]}`)
+    .join("\n");
+
+  embeds.push({
+    author,
+    title: `📦 Pushed to \`${repository.name}:${branch}\``,
+    description: `**By:** ${pusher.name}\n\n${commitLines}`,
+    color: 0x00ccff,
+    timestamp: new Date().toISOString(),
+  });
+
+  // ✅ File change embed here:
+  const added = [];
+  const removed = [];
+  const modified = [];
+
+  for (const commit of commits) {
+    added.push(...commit.added);
+    removed.push(...commit.removed);
+    modified.push(...commit.modified);
+  }
+
+  const totalChanges = added.length + removed.length + modified.length;
+  if (totalChanges > 0) {
+    const maxShown = 10;
+    const diffLines = [];
+
+    for (const file of added.slice(-maxShown)) diffLines.push(`+ ${file}`);
+    for (const file of removed.slice(-maxShown)) diffLines.push(`- ${file}`);
+    for (const file of modified.slice(-maxShown)) diffLines.push(`--- ${file}`);
+
+    if (diffLines.length < totalChanges) {
+      diffLines.push(`# ...Showing last ${diffLines.length}/${totalChanges} changes...`);
     }
+
+    embeds.push({
+      title: "📄 File Changes in Push",
+      description: "```diff\n" + diffLines.join("\n") + "\n```",
+      color: 0x88cc88,
+      timestamp: new Date().toISOString(),
+      author,
+    });
+  }
+
+  break;
+}
+
 
     case "pull_request": {
       const pr = payload.pull_request;
@@ -96,40 +132,6 @@ if (useRepoAuthor && payload.repository) {
         timestamp: new Date().toISOString(),
       });
     }
-  
-
-const added = [];
-const removed = [];
-const modified = [];
-
-for (const commit of commits) {
-  added.push(...commit.added);
-  removed.push(...commit.removed);
-  modified.push(...commit.modified);
-}
-
-const totalChanges = added.length + removed.length + modified.length;
-if (totalChanges > 0) {
-  const maxShown = 10;
-  const diffLines = [];
-
-  // Only take most recent N across all 3 categories (or split fairly if needed)
-  for (const file of added.slice(-maxShown)) diffLines.push(`+ ${file}`);
-  for (const file of removed.slice(-maxShown)) diffLines.push(`- ${file}`);
-  for (const file of modified.slice(-maxShown)) diffLines.push(`--- ${file}`);
-
-  if (diffLines.length < totalChanges) {
-    diffLines.push(`# ...Showing last ${diffLines.length}/${totalChanges} changes...`);
-  }
-
-  embeds.push({
-    title: "📄 File Changes in Push",
-    description: "```diff\n" + diffLines.join("\n") + "\n```",
-    color: 0x88cc88,
-    timestamp: new Date().toISOString(),
-    author, // <- Set by use-repo param if present
-  });
-}
   }
 
   try {
