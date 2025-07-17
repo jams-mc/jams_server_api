@@ -56,41 +56,71 @@ async function sendDiscordLog(versionCode, previousVersion, versionNotes) {
   if (!webhookUrl) return;
 
   const { added = [], removed = [], modified = [] } = versionNotes;
-  const fields = [];
 
-  const formatList = (items, type) =>
-    items.slice(0, 20).map(p => ({
-      name: `**${type.toUpperCase()}**`,
-      value: `\`${p}\``,
-      inline: false
-    }));
+  const send = async (content, embedFields = []) => {
+    const body = {
+      content,
+      embeds: embedFields.length
+        ? [{
+            title: null,
+            description: null,
+            color: 0x00bfff,
+            fields: embedFields,
+            timestamp: new Date().toISOString(),
+          }]
+        : [],
+    };
 
-  fields.push(...formatList(added, 'added'));
-  fields.push(...formatList(removed, 'removed'));
-  fields.push(...formatList(modified, 'modified'));
-
-  const payload = {
-    embeds: [
-      {
-        title: `🛠 Resource Pack Updated`,
-        description: `**Previous Version:** \`${previousVersion.version || '0-0-0-init'}\`\n**New Version:** \`${versionCode}\``,
-        color: 0x00bfff,
-        timestamp: new Date().toISOString(),
-        fields: fields.length ? fields : [{ name: "No changes", value: "Nothing was added, removed, or modified." }],
-      }
-    ]
+    try {
+      await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      await new Promise(resolve => setTimeout(resolve, 500)); // Delay to avoid rate limits
+    } catch (err) {
+      console.warn("❌ Failed to send Discord log:", err.message);
+    }
   };
 
-  try {
-    await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    console.log("📡 Discord webhook sent");
-  } catch (err) {
-    console.warn("❌ Failed to send Discord webhook", err.message);
-  }
+  // START BARRIER
+  await send(`**\n---\n**`);
+
+  // INIT MESSAGE
+  await send(`🛠 **Resource Pack Build Initialized**\nPrevious version: \`${previousVersion.version || "0-0-0-init"}\`\nNew version: \`${versionCode}\``);
+
+  // CHUNK MESSAGE SENDER
+  const sendChunks = async (items, type) => {
+    if (!items.length) return;
+    const chunkSize = 15;
+    for (let i = 0; i < items.length; i += chunkSize) {
+      const chunk = items.slice(i, i + chunkSize);
+      const content = chunk
+        .map(p => `-# **Type:** ${type}\n-# **Path:** \`${p}\``)
+        .join("\n\n");
+      await send(content);
+    }
+  };
+
+  await sendChunks(added, "added");
+  await sendChunks(removed, "removed");
+  await sendChunks(modified, "modified");
+
+  // FINAL SUMMARY
+  const totalChanges = added.length + removed.length + modified.length;
+  const summary = [
+    `✅ **Build Complete!**`,
+    `📦 **New Version:** \`${versionCode}\``,
+    `➕ Added: ${added.length}`,
+    `➖ Removed: ${removed.length}`,
+    `✏️ Modified: ${modified.length}`,
+    `🧾 Total Changes: ${totalChanges}`,
+  ].join("\n");
+
+  await send(summary);
+
+  // END BARRIER
+  await send(`**\n---\n**`);
 }
 
 export async function buildPack() {
@@ -129,7 +159,7 @@ export async function buildPack() {
     fileCount++;
   }
 
-  // STEP 3: Load previous hashes and version from Blob
+  // STEP 3: Load previous hashes and version
   console.log("📁 Loading previous build history...");
   let previousHashes = {};
   let previousVersion = { version: "0-0-0-init" };
@@ -156,7 +186,7 @@ export async function buildPack() {
   }
   const versionNotes = { added, removed, modified };
 
-  // STEP 5: Generate final ZIP content
+  // STEP 5: Generate ZIP and version
   const finalZipBuffer = await newZip.generateAsync({ type: "nodebuffer" });
   const sha1 = crypto.createHash("sha1").update(finalZipBuffer).digest("hex");
   const versionCode = await getVersionCode(versionNotes, sha1);
@@ -170,7 +200,7 @@ export async function buildPack() {
 
   const newChangeBlock = createChangeLog(versionCode, versionNotes);
 
-  // Load previous changelog and prepend new
+  // STEP 6: Load and prepend changelog
   let previousChangeLog = "";
   try {
     const prevChangeRes = await fetch("https://gr1tvtdf738zcvfo.public.blob.vercel-storage.com/resource-pack/change.txt");
@@ -190,7 +220,7 @@ export async function buildPack() {
     sha1,
   };
 
-  // Add generated files to ZIP
+  // STEP 7: Add generated files
   newZip.file("pack.mcmeta", JSON.stringify(packMeta, null, 2));
   newZip.file("version.txt", versionCode);
   newZip.file("change.txt", changeLog);
@@ -200,10 +230,9 @@ export async function buildPack() {
     newZip.file("pack.png", pngBuffer);
   }
 
-  // STEP 6: Rebuild ZIP to include new files
   const updatedZipBuffer = await newZip.generateAsync({ type: "nodebuffer" });
 
-  // STEP 7: Upload all blobs
+  // STEP 8: Upload blobs
   console.log("🚀 Uploading files to blob storage...");
 
   const [blob, hashBlob, changeBlob, versionBlob, metaBlob] = await Promise.all([
@@ -239,7 +268,7 @@ export async function buildPack() {
     }),
   ]);
 
-  // STEP 8: Discord webhook log
+  // STEP 9: Log to Discord
   await sendDiscordLog(versionCode, previousVersion, versionNotes);
 
   console.log("✅ All files uploaded!");
