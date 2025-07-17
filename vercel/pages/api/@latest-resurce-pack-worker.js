@@ -9,6 +9,7 @@ export const config = {
 export default async function handler(req, res) {
   const { discord } = req.query;
   const payload = req.body;
+console.log(payload);
 
   const branch = payload?.ref?.split("/").pop();
   if (branch !== "OFFICIAL-VERSION-DONT-FUCK-UP") {
