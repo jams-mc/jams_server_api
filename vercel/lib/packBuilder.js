@@ -84,7 +84,7 @@ async function sendDiscordLog(versionCode, previousVersion, versionNotes) {
 
 
   // START BARRIER
-  await send(`**\n---\n**`);
+  await send(`** **`);
 
   // INIT MESSAGE
   await send(`🛠 **Resource Pack Build Initialized**\nPrevious version: \`${previousVersion.version || "0-0-0-init"}\`\nNew version: \`${versionCode}\``);
@@ -96,7 +96,7 @@ async function sendDiscordLog(versionCode, previousVersion, versionNotes) {
     for (let i = 0; i < items.length; i += chunkSize) {
       const chunk = items.slice(i, i + chunkSize);
       const content = chunk
-        .map(p => `-# **Type:** ${type}\n-# **Path:** \`${p}\``)
+        .map(p => `**Type:** ${type}\n**Path:** \`${p}\``)
         .join("\n\n");
       await send(content);
     }
@@ -120,7 +120,7 @@ async function sendDiscordLog(versionCode, previousVersion, versionNotes) {
   await send(summary);
 
   // END BARRIER
-  await send(`**\n---\n**`);
+  await send(`** **`);
 }
 
 export async function buildPack() {
