@@ -5,6 +5,12 @@ import { put } from "@vercel/blob";
 import axios from 'axios';
 
 
+export const config = {
+  api: {
+    responseLimit: false,
+  },
+}
+
 export default async function handler(req, res) {
   const GITHUB_ZIP_URL =
     "https://github.com/jams-mc/J.A.M.S.-Resource-Pack-Files/archive/refs/heads/OFFICIAL-VERSION-DONT-FUCK-UP.zip";
