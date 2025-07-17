@@ -192,5 +192,6 @@ export default async function handler(req, res) {
 
 const response = await axios.get(blobUrl, { responseType: 'stream' });
   res.setHeader('Content-Type', 'application/zip');
+ res.setHeader('Content-Length', finalZipBuffer.length);
   response.data.pipe(res);
 }
