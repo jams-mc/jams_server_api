@@ -4,8 +4,9 @@ import fetch from "node-fetch";
 import crypto from "crypto";
 import { put } from "@vercel/blob";
 
-const METADATA_URL = "https://jams-mc.github.io/jams-mc.resourcepack/resource_pack/config.json"; // Replace with your actual URL
+const METADATA_URL = "https://jams-mc.github.io/jams-mc.resourcepack/resource_pack/config.json";
 const HISTORY_BLOB = "resource-pack/build-history.json";
+const VERSION_BLOB = "version.json";
 
 async function getVersionCode({ added, removed, modified }, sha1) {
   const shortSha = sha1.slice(0, 6);
@@ -14,8 +15,7 @@ async function getVersionCode({ added, removed, modified }, sha1) {
   try {
     const res = await fetch("https://gr1tvtdf738zcvfo.public.blob.vercel-storage.com/version.json");
     if (res.ok) {
-      const json = await res.json();
-      prevVersion = json;
+      prevVersion = await res.json();
     }
   } catch {
     console.warn("⚠️ Failed to fetch previous version. Using 0-0-0.");
@@ -40,24 +40,8 @@ async function getVersionCode({ added, removed, modified }, sha1) {
   return `${x}-${y}-${z}-${shortSha}`;
 }
 
-
 function createChangeLog(versionCode, versionNotes) {
-const { added = [], removed = [], modified = [] } = versionNotes;
-
-for (const [relPath, hash] of Object.entries(currentHashes)) {
-  if (!(relPath in previousHashes)) {
-    added.push(relPath);
-  } else if (previousHashes[relPath] !== hash) {
-    modified.push(relPath);
-  }
-}
-
-for (const relPath in previousHashes) {
-  if (!(relPath in currentHashes)) {
-    removed.push(relPath);
-  }
-}
-
+  const { added = [], removed = [], modified = [] } = versionNotes;
   const parts = [
     `====== VERSION ${versionCode} ======`,
     added.length ? `Added:\n${added.map(i => `- ${i}`).join('\n')}` : '',
@@ -107,7 +91,7 @@ export async function buildPack() {
   console.log("📁 Loading previous build history...");
   let previousHashes = {};
   try {
-    const prev = await fetch(`https://<your-project-id>.blob.vercel-storage.com/${HISTORY_BLOB}`);
+    const prev = await fetch("https://gr1tvtdf738zcvfo.public.blob.vercel-storage.com/resource-pack/build-history.json");
     if (prev.ok) previousHashes = await prev.json();
   } catch (err) {
     console.log("⚠️ No previous hash history found, treating as initial build.");
@@ -127,7 +111,7 @@ export async function buildPack() {
   // STEP 5: Generate final ZIP content
   const finalZipBuffer = await newZip.generateAsync({ type: "nodebuffer" });
   const sha1 = crypto.createHash("sha1").update(finalZipBuffer).digest("hex");
- const versionCode = await getVersionCode(versionNotes, sha1);
+  const versionCode = await getVersionCode(versionNotes, sha1);
 
   const packMeta = {
     pack: {
@@ -179,7 +163,7 @@ export async function buildPack() {
       access: "public",
       allowOverwrite: true,
     }),
-    put("version.json", JSON.stringify(versionInfo, null, 2), {
+    put(VERSION_BLOB, JSON.stringify(versionInfo, null, 2), {
       token: process.env.VERCEL_BLOB_READ_WRITE_TOKEN,
       contentType: "application/json",
       access: "public",
