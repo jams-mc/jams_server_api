@@ -51,6 +51,48 @@ function createChangeLog(versionCode, versionNotes) {
   return parts.join('\n\n');
 }
 
+async function sendDiscordLog(versionCode, previousVersion, versionNotes) {
+  const webhookUrl = process.env.LOG_ACTIVE_EDITS;
+  if (!webhookUrl) return;
+
+  const { added = [], removed = [], modified = [] } = versionNotes;
+  const fields = [];
+
+  const formatList = (items, type) =>
+    items.slice(0, 20).map(p => ({
+      name: `**${type.toUpperCase()}**`,
+      value: `\`${p}\``,
+      inline: false
+    }));
+
+  fields.push(...formatList(added, 'added'));
+  fields.push(...formatList(removed, 'removed'));
+  fields.push(...formatList(modified, 'modified'));
+
+  const payload = {
+    embeds: [
+      {
+        title: `🛠 Resource Pack Updated`,
+        description: `**Previous Version:** \`${previousVersion.version || '0-0-0-init'}\`\n**New Version:** \`${versionCode}\``,
+        color: 0x00bfff,
+        timestamp: new Date().toISOString(),
+        fields: fields.length ? fields : [{ name: "No changes", value: "Nothing was added, removed, or modified." }],
+      }
+    ]
+  };
+
+  try {
+    await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    console.log("📡 Discord webhook sent");
+  } catch (err) {
+    console.warn("❌ Failed to send Discord webhook", err.message);
+  }
+}
+
 export async function buildPack() {
   console.log("🔧 Starting resource pack build...");
 
@@ -87,14 +129,20 @@ export async function buildPack() {
     fileCount++;
   }
 
-  // STEP 3: Load previous hashes from Blob
+  // STEP 3: Load previous hashes and version from Blob
   console.log("📁 Loading previous build history...");
   let previousHashes = {};
+  let previousVersion = { version: "0-0-0-init" };
+
   try {
-    const prev = await fetch("https://gr1tvtdf738zcvfo.public.blob.vercel-storage.com/resource-pack/build-history.json");
-    if (prev.ok) previousHashes = await prev.json();
+    const [prevHashRes, prevVersionRes] = await Promise.all([
+      fetch("https://gr1tvtdf738zcvfo.public.blob.vercel-storage.com/resource-pack/build-history.json"),
+      fetch("https://gr1tvtdf738zcvfo.public.blob.vercel-storage.com/version.json"),
+    ]);
+    if (prevHashRes.ok) previousHashes = await prevHashRes.json();
+    if (prevVersionRes.ok) previousVersion = await prevVersionRes.json();
   } catch (err) {
-    console.log("⚠️ No previous hash history found, treating as initial build.");
+    console.log("⚠️ No previous history/version found.");
   }
 
   // STEP 4: Detect changes
@@ -120,7 +168,21 @@ export async function buildPack() {
     },
   };
 
-  const changeLog = createChangeLog(versionCode, versionNotes);
+  const newChangeBlock = createChangeLog(versionCode, versionNotes);
+
+  // Load previous changelog and prepend new
+  let previousChangeLog = "";
+  try {
+    const prevChangeRes = await fetch("https://gr1tvtdf738zcvfo.public.blob.vercel-storage.com/resource-pack/change.txt");
+    if (prevChangeRes.ok) {
+      previousChangeLog = await prevChangeRes.text();
+    }
+  } catch (err) {
+    console.warn("⚠️ No previous changelog found.");
+  }
+
+  const changeLog = [newChangeBlock, previousChangeLog].filter(Boolean).join("\n\n");
+
   const versionInfo = {
     version: versionCode,
     timestamp: new Date().toISOString(),
@@ -176,6 +238,9 @@ export async function buildPack() {
       allowOverwrite: true,
     }),
   ]);
+
+  // STEP 8: Discord webhook log
+  await sendDiscordLog(versionCode, previousVersion, versionNotes);
 
   console.log("✅ All files uploaded!");
   console.log(`🌐 Pack URL: ${blob.url}`);
