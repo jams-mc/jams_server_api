@@ -188,7 +188,7 @@ export async function buildPack() {
     version: versionCode,
     sha1,
     fileCount,
-    sizeBytes: finalZipBuffer.length
+    sizeBytes: finalZipBuffer.length,
     changeLogUrl: changeBlob.url,
     versionJsonUrl: versionBlob.url,
   };
