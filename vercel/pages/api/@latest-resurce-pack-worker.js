@@ -1,5 +1,6 @@
 // pages/api/github-pack-hook.js
-import { buildPack } from "@/lib/packBuilder";
+import { buildPack } from "../../lib/packBuilder";
+
 
 export const config = {
   api: { bodyParser: true },
