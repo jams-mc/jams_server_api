@@ -63,7 +63,7 @@ if (useRepoAuthor && payload.repository) {
 
   const totalChanges = added.length + removed.length + modified.length;
   if (totalChanges > 0) {
-    const maxShown = 10;
+    const maxShown = 20;
     const diffLines = [];
 
     for (const file of added.slice(-maxShown)) diffLines.push(`+ ${file}`);
