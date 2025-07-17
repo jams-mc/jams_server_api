@@ -57,31 +57,31 @@ async function sendDiscordLog(versionCode, previousVersion, versionNotes) {
 
   const { added = [], removed = [], modified = [] } = versionNotes;
 
-  const send = async (content, embedFields = []) => {
-    const body = {
-      content,
-      embeds: embedFields.length
-        ? [{
-            title: null,
-            description: null,
-            color: 0x00bfff,
-            fields: embedFields,
-            timestamp: new Date().toISOString(),
-          }]
-        : [],
-    };
-
-    try {
-      await fetch(webhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      await new Promise(resolve => setTimeout(resolve, 500)); // Delay to avoid rate limits
-    } catch (err) {
-      console.warn("❌ Failed to send Discord log:", err.message);
-    }
+  const send = async (title, description, fields = []) => {
+  const embed = {
+    title: title || null,
+    description: description || null,
+    color: 0x00bfff,
+    timestamp: new Date().toISOString(),
+    fields: fields.length ? fields : undefined,
   };
+
+  const body = {
+    embeds: [embed],
+  };
+
+  try {
+    await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    await new Promise(resolve => setTimeout(resolve, 500)); // basic rate limit
+  } catch (err) {
+    console.warn("❌ Failed to send Discord embed:", err.message);
+  }
+};
+
 
   // START BARRIER
   await send(`**\n---\n**`);
