@@ -18,7 +18,8 @@
     "formdata-node": "latest",
     "formdata-polyfill":"latest",
     "form-data": "^4.0.0",
-    "@vercel/blob":"latest"
+    "@vercel/blob":"latest",
+    "axios":" latest"
   },
   "devDependencies": {
     "eslint": "8.45.0",
