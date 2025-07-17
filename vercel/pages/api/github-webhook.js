@@ -96,7 +96,7 @@ if (useRepoAuthor && payload.repository) {
         timestamp: new Date().toISOString(),
       });
     }
-  }
+  
 
 const added = [];
 const removed = [];
@@ -130,7 +130,7 @@ if (totalChanges > 0) {
     author, // <- Set by use-repo param if present
   });
 }
-
+  }
 
   try {
     const resp = await fetch(discordWebhook, {
