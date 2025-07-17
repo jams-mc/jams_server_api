@@ -42,7 +42,22 @@ async function getVersionCode({ added, removed, modified }, sha1) {
 
 
 function createChangeLog(versionCode, versionNotes) {
-  const { added = [], removed = [], modified = [] } = versionNotes;
+const { added = [], removed = [], modified = [] } = versionNotes;
+
+for (const [relPath, hash] of Object.entries(currentHashes)) {
+  if (!(relPath in previousHashes)) {
+    added.push(relPath);
+  } else if (previousHashes[relPath] !== hash) {
+    modified.push(relPath);
+  }
+}
+
+for (const relPath in previousHashes) {
+  if (!(relPath in currentHashes)) {
+    removed.push(relPath);
+  }
+}
+
   const parts = [
     `====== VERSION ${versionCode} ======`,
     added.length ? `Added:\n${added.map(i => `- ${i}`).join('\n')}` : '',
