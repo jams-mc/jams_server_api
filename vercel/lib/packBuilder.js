@@ -7,14 +7,39 @@ import { put } from "@vercel/blob";
 const METADATA_URL = "https://jams-mc.github.io/jams-mc.resourcepack/resource_pack/config.json"; // Replace with your actual URL
 const HISTORY_BLOB = "resource-pack/build-history.json";
 
-function getVersionCode(fileCount, sha1) {
-  let x = 0, y = 0, z = 0;
-  if (fileCount >= 25) x = Math.floor(fileCount / 25);
-  else if (fileCount >= 16) y = Math.floor(fileCount / 10);
-  else z = fileCount;
+async function getVersionCode({ added, removed, modified }, sha1) {
   const shortSha = sha1.slice(0, 6);
+  let prevVersion = { version: "0-0-0-init" };
+
+  try {
+    const res = await fetch("https://gr1tvtdf738zcvfo.public.blob.vercel-storage.com/version.json");
+    if (res.ok) {
+      const json = await res.json();
+      prevVersion = json;
+    }
+  } catch {
+    console.warn("⚠️ Failed to fetch previous version. Using 0-0-0.");
+  }
+
+  const [prevX, prevY, prevZ] = prevVersion.version.split("-").map(v => parseInt(v, 10));
+  const changeCount = added.length + removed.length + modified.length;
+
+  let x = prevX, y = prevY, z = prevZ;
+
+  if (changeCount < 15) {
+    z++;
+  } else if (changeCount <= 25) {
+    y++;
+    z = 0;
+  } else {
+    x++;
+    y = 0;
+    z = 0;
+  }
+
   return `${x}-${y}-${z}-${shortSha}`;
 }
+
 
 function createChangeLog(versionCode, versionNotes) {
   const { added = [], removed = [], modified = [] } = versionNotes;
@@ -87,7 +112,7 @@ export async function buildPack() {
   // STEP 5: Generate final ZIP content
   const finalZipBuffer = await newZip.generateAsync({ type: "nodebuffer" });
   const sha1 = crypto.createHash("sha1").update(finalZipBuffer).digest("hex");
-  const versionCode = getVersionCode(fileCount, sha1);
+ const versionCode = await getVersionCode(versionNotes, sha1);
 
   const packMeta = {
     pack: {
@@ -163,6 +188,7 @@ export async function buildPack() {
     version: versionCode,
     sha1,
     fileCount,
+    sizeBytes: finalZipBuffer.length
     changeLogUrl: changeBlob.url,
     versionJsonUrl: versionBlob.url,
   };
