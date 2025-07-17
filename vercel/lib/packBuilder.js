@@ -164,7 +164,7 @@ export async function buildPack() {
       access: "public",
       allowOverwrite: true,
     }),
-    put("resource-pack/version.json", JSON.stringify(versionInfo, null, 2), {
+    put("version.json", JSON.stringify(versionInfo, null, 2), {
       token: process.env.VERCEL_BLOB_READ_WRITE_TOKEN,
       contentType: "application/json",
       access: "public",
