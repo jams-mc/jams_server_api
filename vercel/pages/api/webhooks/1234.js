@@ -4,7 +4,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Missing ?dc= webhook URL" });
   }
 
-  // Extract request details
+  // Extract details
   const ip =
     req.headers["x-forwarded-for"]?.split(",")[0] ||
     req.connection?.remoteAddress ||
@@ -13,23 +13,16 @@ export default async function handler(req, res) {
   const method = req.method;
   const contentType = req.headers["content-type"] || "unknown";
 
-  // Try to get body (if applicable)
-  let body = null;
-  if (["POST", "PUT", "PATCH"].includes(method)) {
-    try {
-      body = req.body;
-    } catch (e) {
-      body = "Could not parse body";
-    }
-  }
-
-  // Prepare payload
-  const payload = {
-    method,
-    contentType,
-    headers: req.headers,
-    ip,
-    body,
+  // Construct Discord-style embed payload
+  const embed = {
+    title: "📥 Incoming API Request",
+    color: 0x00bfff,
+    fields: [
+      { name: "Method", value: method, inline: true },
+      { name: "Content-Type", value: contentType, inline: true },
+      { name: "IP", value: ip, inline: false },
+    ],
+    timestamp: new Date().toISOString(),
   };
 
   // Send webhook
@@ -37,11 +30,13 @@ export default async function handler(req, res) {
     const webhookRes = await fetch(dcUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        embeds: [embed],
+      }),
     });
 
     return res.status(200).json({
-      message: "Forwarded successfully",
+      message: "Embed sent",
       webhookStatus: webhookRes.status,
     });
   } catch (err) {
@@ -49,11 +44,4 @@ export default async function handler(req, res) {
   }
 }
 
-// Enable body parsing for all content types
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '9mb',
-    },
-  },
-};
+// Vercel body parser is fine as-is here (no need to access raw body)
