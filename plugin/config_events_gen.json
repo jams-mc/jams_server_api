@@ -1,0 +1,36 @@
+{
+  "maxEventsPerDay": 3,
+  "emptyDayProbability": 0.1,
+  "templates": [
+    {
+      "name": "Meteor Shower",
+      "commands": ["say A meteor shower starts now!", "title @a subtitle &eMeteors!"],
+      "rarity": 0.4,
+      "bypassEmptyDays": false,
+      "discord": {
+        "announce": true,
+        "message": {
+          "embeds": [
+            {
+              "title": "☄ Meteor Shower!",
+              "description": "A meteor shower is happening in-game now!",
+              "color": 16753920
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Trader Visit",
+      "commands": ["say A traveling trader arrived!"],
+      "rarity": 0.15,
+      "bypassEmptyDays": true,
+      "discord": {
+        "announce": true,
+        "message": {
+          "content": "A trader has come to town!"
+        }
+      }
+    }
+  ]
+}
