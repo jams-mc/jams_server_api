@@ -19,7 +19,9 @@
     "formdata-polyfill":"latest",
     "form-data": "^4.0.0",
     "@vercel/blob":"latest",
-    "axios":" latest"
+    "axios":" latest",
+    "node-fetch": "latest",
+    "web-audio-api": "latest"
   },
   "devDependencies": {
     "eslint": "8.45.0",
