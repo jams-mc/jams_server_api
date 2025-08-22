@@ -23,7 +23,8 @@
     "node-fetch": "latest",
     "web-audio-api": "latest",
     "fluent-ffmpeg": "latest",
-    "ffmpeg-static": "latest"
+    "ffmpeg-static": "latest",
+    "@ffmpeg/ffmpeg": "latest"  
   },
   "devDependencies": {
     "eslint": "8.45.0",
