@@ -2,6 +2,12 @@ import fetch from "node-fetch";
 import { AudioContext } from "web-audio-api";
 import * as lamejs from "lamejs"; // ES import form, safer in Node ESM
 
+// ⚡ Fix MPEGMode global issue
+if (!globalThis.MPEGMode && lamejs.MPEGMode) {
+  globalThis.MPEGMode = lamejs.MPEGMode;
+}
+
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
