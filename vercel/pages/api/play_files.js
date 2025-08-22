@@ -1,4 +1,9 @@
-import { createFFmpeg, fetchFile } from "@ffmpeg/ffmpeg/node";
+import fetch from "node-fetch";
+import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
+import ffmpeg from "fluent-ffmpeg";
+import { tmpdir } from "os";
+import { join } from "path";
+import { promises as fs } from "fs";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -16,53 +21,38 @@ export default async function handler(req, res) {
     if (!response.ok) throw new Error(`Failed to fetch file: ${response.status}`);
     const buffer = Buffer.from(await response.arrayBuffer());
 
-    // Init ffmpeg wasm
-    const ffmpeg = createFFmpeg({ log: true });
-    if (!ffmpeg.isLoaded()) await ffmpeg.load();
-
-    // Write MP3 into WASM FS
-    ffmpeg.FS("writeFile", "input.mp3", await fetchFile(buffer));
+    const inputPath = join(tmpdir(), `input-${Date.now()}.mp3`);
+    await fs.writeFile(inputPath, buffer);
 
     const FRAGMENT_SEC = 5;
-    let fragments = [];
-    let start = 0;
-    let index = 0;
+    const outputPattern = join(tmpdir(), "frag-%03d.mp3");
 
-    // Keep extracting until EOF
-    while (true) {
-      const outName = `frag-${index}.mp3`;
+    console.log("✂️ Splitting with ffmpeg…");
+    await new Promise((resolve, reject) => {
+      ffmpeg(inputPath)
+        .setFfmpegPath(ffmpegInstaller.path) // ✅ use installer binary
+        .outputOptions(["-f segment", `-segment_time ${FRAGMENT_SEC}`, "-c copy"])
+        .output(outputPattern)
+        .on("end", resolve)
+        .on("error", reject)
+        .run();
+    });
 
-      try {
-        await ffmpeg.run(
-          "-i", "input.mp3",
-          "-ss", String(start),
-          "-t", String(FRAGMENT_SEC),
-          "-c", "copy",
-          outName
-        );
-      } catch (err) {
-        break; // no more audio left
-      }
+    const files = await fs.readdir(tmpdir());
+    const fragFiles = files.filter(f => f.startsWith("frag-") && f.endsWith(".mp3")).sort();
 
-      // Try reading the fragment
-      let fragData;
-      try {
-        fragData = ffmpeg.FS("readFile", outName);
-      } catch {
-        break; // fragment didn’t get created → EOF
-      }
+    const fragments = [];
+    for (let i = 0; i < fragFiles.length; i++) {
+      const fragPath = join(tmpdir(), fragFiles[i]);
+      const fragBuf = await fs.readFile(fragPath);
 
-      // Convert to base64
-      const base64Fragment = Buffer.from(fragData).toString("base64");
-
-      // Push formatted JSON object
       fragments.push({
         action: "play",
         song: {
-          fragment: base64Fragment,
+          fragment: fragBuf.toString("base64"),
           songname: songName,
-          totalDuration: FRAGMENT_SEC,   // per-chunk duration
-          durationToPlayAt: start,
+          totalDuration: FRAGMENT_SEC,
+          durationToPlayAt: i * FRAGMENT_SEC,
           durationNow: FRAGMENT_SEC
         },
         effects: {
@@ -75,34 +65,9 @@ export default async function handler(req, res) {
           totalLoops: 1
         }
       });
-
-      // Clean up
-      ffmpeg.FS("unlink", outName);
-
-      start += FRAGMENT_SEC;
-      index++;
     }
 
-    console.log("✅ Built", fragments.length, "fragments");
-
-    // Optionally send to Xano
-    const xanoUrl = process.env.XANO_ENDPOINT;
-    let xanoResult = null;
-    if (xanoUrl) {
-      const xanoResp = await fetch(xanoUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(fragments)
-      });
-      xanoResult = await xanoResp.json();
-    }
-
-    res.status(200).json({
-      message: "Fragments ready",
-      fragmentsCount: fragments.length,
-      fragments,   // remove if you only want to send to Xano
-      xanoResult
-    });
+    res.status(200).json({ fragmentsCount: fragments.length, fragments });
   } catch (err) {
     console.error("❌ ERROR:", err);
     res.status(500).json({ error: "Failed to process file", details: err.message });
