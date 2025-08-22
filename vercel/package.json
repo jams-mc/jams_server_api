@@ -21,7 +21,8 @@
     "@vercel/blob":"latest",
     "axios":" latest",
     "node-fetch": "latest",
-    "web-audio-api": "latest"
+    "web-audio-api": "latest",
+    "lamejs": "latest"
   },
   "devDependencies": {
     "eslint": "8.45.0",
