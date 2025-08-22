@@ -1,9 +1,6 @@
 import fetch from "node-fetch";
-import { Readable } from "stream";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-import AudioContext from "web-audio-api"; // lightweight AudioContext for Node
+import lamejs from "lamejs"; // MP3 encoder
+import { AudioContext } from "web-audio-api";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -16,58 +13,44 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. Download file from URL
+    // 1. Download file
     const response = await fetch(fileUrl);
     const arrayBuffer = await response.arrayBuffer();
 
-    // 2. Decode audio
+    // 2. Decode audio → PCM
     const audioCtx = new AudioContext();
     const audioBuffer = await new Promise((resolve, reject) => {
       audioCtx.decodeAudioData(Buffer.from(arrayBuffer), resolve, reject);
     });
 
-    // 3. Encode WAV
-    function encodeWAV(audioBuffer) {
-      const numOfChannels = audioBuffer.numberOfChannels;
-      const sampleRate = audioBuffer.sampleRate;
-      const bitDepth = 16;
-      const bufferLength = audioBuffer.length * numOfChannels * 2;
-      const buffer = Buffer.alloc(44 + bufferLength);
+    // 3. Helper: encode PCM → MP3 (with lamejs)
+    function encodeMP3(buffer) {
+      const numChannels = buffer.numberOfChannels;
+      const sampleRate = buffer.sampleRate;
 
-      let offset = 0;
-      function writeString(str) {
-        buffer.write(str, offset); offset += str.length;
-      }
-      writeString("RIFF");
-      buffer.writeUInt32LE(36 + bufferLength, offset); offset += 4;
-      writeString("WAVE");
-      writeString("fmt ");
-      buffer.writeUInt32LE(16, offset); offset += 4;
-      buffer.writeUInt16LE(1, offset); offset += 2; // PCM
-      buffer.writeUInt16LE(numOfChannels, offset); offset += 2;
-      buffer.writeUInt32LE(sampleRate, offset); offset += 4;
-      buffer.writeUInt32LE(sampleRate * numOfChannels * bitDepth / 8, offset); offset += 4;
-      buffer.writeUInt16LE(numOfChannels * bitDepth / 8, offset); offset += 2;
-      buffer.writeUInt16LE(bitDepth, offset); offset += 2;
-      writeString("data");
-      buffer.writeUInt32LE(bufferLength, offset); offset += 4;
+      const mp3Encoder = new lamejs.Mp3Encoder(numChannels, sampleRate, 128);
+      let mp3Data = [];
 
-      for (let i = 0; i < audioBuffer.length; i++) {
-        for (let ch = 0; ch < numOfChannels; ch++) {
-          let sample = audioBuffer.getChannelData(ch)[i];
-          sample = Math.max(-1, Math.min(1, sample));
-          const s = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
-          buffer.writeInt16LE(s, offset); offset += 2;
-        }
+      const samples = buffer.getChannelData(0); // mono for simplicity
+      const blockSize = 1152;
+
+      for (let i = 0; i < samples.length; i += blockSize) {
+        const sampleChunk = samples.subarray(i, i + blockSize);
+        const mp3buf = mp3Encoder.encodeBuffer(sampleChunk);
+        if (mp3buf.length > 0) mp3Data.push(Buffer.from(mp3buf));
       }
-      return buffer;
+
+      const d = mp3Encoder.flush();
+      if (d.length > 0) mp3Data.push(Buffer.from(d));
+
+      return Buffer.concat(mp3Data);
     }
 
     function arrayBufferToBase64(buf) {
       return Buffer.from(buf).toString("base64");
     }
 
-    // 4. Slice into 5-second fragments
+    // 4. Slice into fragments
     const FRAGMENT_SEC = 5;
     const fragments = [];
     const totalFragments = Math.ceil(audioBuffer.duration / FRAGMENT_SEC);
@@ -82,8 +65,8 @@ export default async function handler(req, res) {
         tmpBuffer.copyToChannel(audioBuffer.getChannelData(ch).subarray(startSample, endSample), ch, 0);
       }
 
-      const wavBuffer = encodeWAV(tmpBuffer);
-      const base64Fragment = arrayBufferToBase64(wavBuffer);
+      const mp3Buffer = encodeMP3(tmpBuffer);
+      const base64Fragment = arrayBufferToBase64(mp3Buffer);
 
       fragments.push({
         action: "play",
@@ -99,17 +82,17 @@ export default async function handler(req, res) {
       });
     }
 
-// 5. Send to Xano
-const xanoUrl = process.env.XANO_ENDPOINT;
-if (!xanoUrl) throw new Error("XANO_ENDPOINT not set in environment variables");
+    // 5. Send to Xano
+    const xanoUrl = process.env.XANO_ENDPOINT;
+    if (!xanoUrl) throw new Error("XANO_ENDPOINT not set in environment variables");
 
-const xanoResp = await fetch(xanoUrl, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify(fragments)
-});
-const xanoResult = await xanoResp.json();
+    const xanoResp = await fetch(xanoUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fragments)
+    });
 
+    const xanoResult = await xanoResp.json();
 
     res.status(200).json({ message: "Fragments sent!", fragments: fragments.length, xanoResult });
   } catch (err) {
