@@ -22,7 +22,8 @@
     "axios":" latest",
     "node-fetch": "latest",
     "web-audio-api": "latest",
-    "fluent-ffmpeg": "latest"
+    "fluent-ffmpeg": "latest",
+    "ffmpeg-static": "latest"
   },
   "devDependencies": {
     "eslint": "8.45.0",
