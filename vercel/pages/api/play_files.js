@@ -1,7 +1,4 @@
-import fetch from "node-fetch";
-import ffmpegPath from "ffmpeg-static";
-import ffmpeg from "fluent-ffmpeg";
-import { PassThrough } from "stream";
+import { createFFmpeg, fetchFile } from "@ffmpeg/ffmpeg";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -18,57 +15,72 @@ export default async function handler(req, res) {
     const response = await fetch(fileUrl);
     if (!response.ok) throw new Error(`Failed to fetch file: ${response.status}`);
     const buffer = Buffer.from(await response.arrayBuffer());
-    console.log("📦 File downloaded:", buffer.length, "bytes");
 
-    // Write buffer to temp file
-    const fs = await import("fs/promises");
-    const path = await import("path");
-    const os = await import("os");
-    const tmpDir = os.tmpdir();
-    const inputPath = path.join(tmpDir, `input-${Date.now()}.mp3`);
-    await fs.writeFile(inputPath, buffer);
+    // Init ffmpeg wasm
+    const ffmpeg = createFFmpeg({ log: true });
+    if (!ffmpeg.isLoaded()) await ffmpeg.load();
 
-    // Split into 5-second MP3 segments
+    // Write mp3 to FFmpeg virtual FS
+    ffmpeg.FS("writeFile", "input.mp3", await fetchFile(buffer));
+
     const FRAGMENT_SEC = 5;
-    const fragments = [];
+    let fragments = [];
+    let start = 0;
+    let index = 0;
 
-    console.log("✂️ Splitting with ffmpeg…");
-    await new Promise((resolve, reject) => {
-      ffmpeg(inputPath)
-        .setFfmpegPath(ffmpegPath)
-        .outputOptions([
-          "-f segment",
-          `-segment_time ${FRAGMENT_SEC}`,
-          "-c copy",
-        ])
-        .output(path.join(tmpDir, "frag-%03d.mp3"))
-        .on("end", resolve)
-        .on("error", reject)
-        .run();
-    });
+    // Loop: extract 5s segments until EOF
+    while (true) {
+      const outName = `frag-${index}.mp3`;
 
-    // Read back fragments
-    const files = await fs.readdir(tmpDir);
-    const fragFiles = files.filter(f => f.startsWith("frag-") && f.endsWith(".mp3"));
-    fragFiles.sort();
+      try {
+        await ffmpeg.run(
+          "-i", "input.mp3",
+          "-ss", String(start),
+          "-t", String(FRAGMENT_SEC),
+          "-c", "copy",
+          outName
+        );
+      } catch (err) {
+        break; // reached EOF
+      }
 
-    for (let i = 0; i < fragFiles.length; i++) {
-      const fragPath = path.join(tmpDir, fragFiles[i]);
-      const fragBuf = await fs.readFile(fragPath);
-      const base64Fragment = fragBuf.toString("base64");
+      // Check if fragment exists in FS
+      let fragData;
+      try {
+        fragData = ffmpeg.FS("readFile", outName);
+      } catch {
+        break; // no more fragments
+      }
 
+      // Convert to base64
+      const base64Fragment = Buffer.from(fragData).toString("base64");
+
+      // Push formatted JSON object
       fragments.push({
         action: "play",
         song: {
           fragment: base64Fragment,
           songname: songName,
-          totalDuration: undefined, // you can compute with ffprobe if needed
-          durationToPlayAt: i * FRAGMENT_SEC,
+          totalDuration: FRAGMENT_SEC,
+          durationToPlayAt: start,
           durationNow: FRAGMENT_SEC
         },
-        effects: { colors: ["#ff0066","#33ccff","#ffee33"], visualizer: "bars", pulseSpeed: 1 },
-        xano: { sendAfter: 4000, totalLoops: 1 }
+        effects: {
+          colors: ["#ff0066", "#33ccff", "#ffee33"],
+          visualizer: "bars",
+          pulseSpeed: 1
+        },
+        xano: {
+          sendAfter: 4000,
+          totalLoops: 1
+        }
       });
+
+      // Clean up fragment from FS
+      ffmpeg.FS("unlink", outName);
+
+      start += FRAGMENT_SEC;
+      index++;
     }
 
     console.log("✅ Built", fragments.length, "fragments");
@@ -86,7 +98,11 @@ export default async function handler(req, res) {
     const xanoResult = await xanoResp.json();
     console.log("📤 Xano response:", xanoResult);
 
-    res.status(200).json({ message: "Fragments sent!", fragments: fragments.length, xanoResult });
+    res.status(200).json({
+      message: "Fragments sent!",
+      fragments: fragments.length,
+      xanoResult
+    });
   } catch (err) {
     console.error("❌ ERROR:", err);
     res.status(500).json({ error: "Failed to process file", details: err.message });
