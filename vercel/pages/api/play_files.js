@@ -55,32 +55,36 @@ export default async function handler(req, res) {
     const fragments = [];
     const totalFragments = Math.ceil(audioBuffer.duration / FRAGMENT_SEC);
 
-    for (let i = 0; i < totalFragments; i++) {
-      const startSample = i * FRAGMENT_SEC * audioBuffer.sampleRate;
-      const endSample = Math.min((i + 1) * FRAGMENT_SEC * audioBuffer.sampleRate, audioBuffer.length);
-      const sliceLength = endSample - startSample;
+for (let i = 0; i < totalFragments; i++) {
+  const startSample = i * FRAGMENT_SEC * audioBuffer.sampleRate;
+  const endSample = Math.min((i + 1) * FRAGMENT_SEC * audioBuffer.sampleRate, audioBuffer.length);
+  const sliceLength = endSample - startSample;
 
-      const tmpBuffer = audioCtx.createBuffer(audioBuffer.numberOfChannels, sliceLength, audioBuffer.sampleRate);
-      for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
-        tmpBuffer.copyToChannel(audioBuffer.getChannelData(ch).subarray(startSample, endSample), ch, 0);
-      }
+  const tmpBuffer = audioCtx.createBuffer(audioBuffer.numberOfChannels, sliceLength, audioBuffer.sampleRate);
 
-      const mp3Buffer = encodeMP3(tmpBuffer);
-      const base64Fragment = arrayBufferToBase64(mp3Buffer);
+  for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+    const originalChannelData = audioBuffer.getChannelData(ch);
+    const slice = originalChannelData.subarray(startSample, endSample);
+    tmpBuffer.getChannelData(ch).set(slice, 0);
+  }
 
-      fragments.push({
-        action: "play",
-        song: {
-          fragment: base64Fragment,
-          songname: songName,
-          totalDuration: Math.floor(audioBuffer.duration),
-          durationToPlayAt: i * FRAGMENT_SEC,
-          durationNow: sliceLength / audioBuffer.sampleRate
-        },
-        effects: { colors: ["#ff0066","#33ccff","#ffee33"], visualizer: "bars", pulseSpeed: 1 },
-        xano: { sendAfter: 4000, totalLoops: 1 }
-      });
-    }
+  const mp3Buffer = encodeMP3(tmpBuffer);
+  const base64Fragment = arrayBufferToBase64(mp3Buffer);
+
+  fragments.push({
+    action: "play",
+    song: {
+      fragment: base64Fragment,
+      songname: songName,
+      totalDuration: Math.floor(audioBuffer.duration),
+      durationToPlayAt: i * FRAGMENT_SEC,
+      durationNow: sliceLength / audioBuffer.sampleRate
+    },
+    effects: { colors: ["#ff0066","#33ccff","#ffee33"], visualizer: "bars", pulseSpeed: 1 },
+    xano: { sendAfter: 4000, totalLoops: 1 }
+  });
+}
+
 
     // 5. Send to Xano
     const xanoUrl = process.env.XANO_ENDPOINT;
