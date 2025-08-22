@@ -1,4 +1,4 @@
-import { createFFmpeg, fetchFile } from "@ffmpeg/ffmpeg";
+import { createFFmpeg, fetchFile } from "@ffmpeg/ffmpeg/node";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
