@@ -5,32 +5,31 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { data_array } = req.body;
+  const { data_array, result_url } = req.body;
 
   if (!Array.isArray(data_array) || data_array.length === 0) {
     return res.status(400).json({ error: "Missing or invalid 'data_array'" });
   }
 
-  // generate random 64-char SHA for this request
+  if (!result_url || typeof result_url !== "string") {
+    return res.status(400).json({ error: "Missing or invalid 'result_url'" });
+  }
+
   const ID_SHA = crypto.randomBytes(32).toString("hex");
 
   // wait 1 second
   await new Promise((resolve) => setTimeout(resolve, 1000));
 
-  // send POST 1:1 to each URL in the array (fire-and-forget)
-  data_array.forEach((url) => {
-    fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url, ID_SHA }),
-    }).catch(() => {
-      // silently ignore errors
-    });
-  });
+  // fire-and-forget POST to result_url
+  fetch(result_url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data_array, ID_SHA }),
+  }).catch(() => {}); // ignore errors
 
-  // respond with ID_SHA and original data array
+  // respond immediately
   res.status(200).json({
-    url: data_array,
+    url: result_url,
     ID_SHA,
   });
 }
