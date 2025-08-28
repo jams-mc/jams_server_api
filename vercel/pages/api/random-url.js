@@ -1,32 +1,36 @@
+import crypto from "crypto";
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  try {
-    const { possible } = req.body;
+  const { data_array } = req.body;
 
-    if (!Array.isArray(possible) || possible.length === 0) {
-      return res.status(400).json({ error: "Missing or invalid 'possible' array" });
-    }
+  if (!Array.isArray(data_array) || data_array.length === 0) {
+    return res.status(400).json({ error: "Missing or invalid 'data_array'" });
+  }
 
-    // pick a random url
-    const randomUrl = possible[Math.floor(Math.random() * possible.length)];
+  // generate random 64-char SHA for this request
+  const ID_SHA = crypto.randomBytes(32).toString("hex");
 
-    // send POST to chosen url
-    const response = await fetch(randomUrl, {
+  // wait 1 second
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+
+  // send POST 1:1 to each URL in the array (fire-and-forget)
+  data_array.forEach((url) => {
+    fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: randomUrl }),
+      body: JSON.stringify({ url, ID_SHA }),
+    }).catch(() => {
+      // silently ignore errors
     });
+  });
 
-    // return backendurl (always as string, or array if you expand later)
-    return res.status(200).json({
-      backendurl: randomUrl,
-      amount: 0,
-      success: response.ok,
-    });
-  } catch (err) {
-    return res.status(500).json({ error: "Server error", details: err.message });
-  }
+  // respond with ID_SHA and original data array
+  res.status(200).json({
+    url: data_array,
+    ID_SHA,
+  });
 }
