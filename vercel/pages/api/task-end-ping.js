@@ -29,7 +29,7 @@ export default async function handler(req, res) {
 
   // respond immediately
   res.status(200).json({
-    url: result_url,
+    urls: result_url,
     ID_SHA,
   });
 }
