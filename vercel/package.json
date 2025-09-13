@@ -29,7 +29,7 @@
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "sharp": "latest",
+    "sharp": "^0.32.6",
     "@resvg/resvg-js":"latest",
     "jsdom":"latest",
     "canvas": "latest",
