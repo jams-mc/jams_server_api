@@ -14,13 +14,13 @@ export const config = {
 };
 let fontBuffers;
 const fallbackFonts = [
-  { url: 'https://hsmineword.github.io/api-vercel/pages/api/svg/converter/fonts/Noto_Emoji/NotoEmoji-VariableFont_wght.ttf' },
-  { url: 'https://hsmineword.github.io/api-vercel/pages/api/svg/converter/fonts/symbola/Symbola.ttf' },
-  { url: 'https://hsmineword.github.io/api-vercel/pages/api/svg/converter/fonts/symbola/Symbola_hint.ttf' },
-  { url: 'https://hsmineword.github.io/api-vercel/pages/api/svg/converter/fonts/dejavu-sans/DejaVuSansCondensed.ttf' },
-  { url: 'https://hsmineword.github.io/api-vercel/pages/api/svg/converter/fonts/NotoEmoji-VariableFont_wght.ttf' },
-  { url: 'https://hsmineword.github.io/api-vercel/pages/api/svg/converter/fonts/NotoEmoji-VariableFont_wght.ttf' },
-  { url: 'https://hsmineword.github.io/api-vercel/pages/api/svg/converter/fonts/NotoSansKR-VariableFont_wght.ttf' },
+  { url: 'https://jams-mc.github.io/jams_server_api/vercel/pages/api/svg/converter/fonts/Noto_Emoji/NotoEmoji-VariableFont_wght.ttf' },
+  { url: 'https://jams-mc.github.io/jams_server_api/vercel/pages/api/svg/converter/fonts/symbola/Symbola.ttf' },
+  { url: 'https://jams-mc.github.io/jams_server_api/vercel/pages/api/svg/converter/fonts/symbola/Symbola_hint.ttf' },
+  { url: 'https://jams-mc.github.io/jams_server_api/vercel/pages/api/svg/converter/fonts/dejavu-sans/DejaVuSansCondensed.ttf' },
+  { url: 'https://jams-mc.github.io/jams_server_api/vercel/pages/api/svg/converter/fonts/NotoEmoji-VariableFont_wght.ttf' },
+  { url: 'https://jams-mc.github.io/jams_server_api/vercel/pages/api/svg/converter/fonts/NotoEmoji-VariableFont_wght.ttf' },
+  { url: 'https://jams-mc.github.io/jams_server_api/vercel/pages/api/svg/converter/fonts/NotoSansKR-VariableFont_wght.ttf' },
 ];
 
 
