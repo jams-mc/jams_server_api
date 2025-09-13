@@ -24,7 +24,19 @@
     "web-audio-api": "latest",
     "fluent-ffmpeg": "latest",
     "ffmpeg-static": "latest",
-    "@ffmpeg/ffmpeg": "latest"  
+    "@ffmpeg/ffmpeg": "latest",
+    "mime": "latest",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "sharp": "latest",
+    "@resvg/resvg-js":"latest",
+    "jsdom":"latest",
+    "canvas": "latest",
+    "opentype.js": "latest",
+    "skia-canvas":"latest",
+    "fontkit":"latest",
+    "wav-encoder": "latest"  
   },
   "devDependencies": {
     "eslint": "8.45.0",
