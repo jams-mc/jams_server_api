@@ -1,9 +1,11 @@
 import sharp from 'sharp'
 import { Resvg } from '@resvg/resvg-js'
 import fetch from 'node-fetch'
-import { JSDOM } from 'jsdom'
 
 async function embedExternalImages(svgString) {
+  // ✅ Dynamically import jsdom here
+  const { JSDOM } = await import('jsdom')
+
   const dom = new JSDOM(svgString, { contentType: 'image/svg+xml' })
   const document = dom.window.document
   const images = [...document.querySelectorAll('image')]
@@ -21,26 +23,23 @@ async function embedExternalImages(svgString) {
       const base64 = buffer.toString('base64')
       const dataUri = `data:${mimeType};base64,${base64}`
 
-      // Replace href attribute
       if (img.hasAttribute('href')) {
         img.setAttribute('href', dataUri)
       } else {
         img.setAttribute('xlink:href', dataUri)
       }
     } catch (e) {
-      // ignore fetch errors, keep original href
       console.warn('Failed to fetch image:', href, e.message)
     }
   }
 
-  // Serialize back to string
   return document.documentElement.outerHTML
 }
 
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '10mb', // increase if needed
+      sizeLimit: '10mb',
     },
   },
 }
@@ -58,25 +57,17 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'svgBase64 is required' })
   }
 
-  // Decode original SVG string
   let svgString = Buffer.from(svgBase64, 'base64').toString('utf-8')
 
-  // Replace external images with base64 embedded images
   try {
     svgString = await embedExternalImages(svgString)
   } catch (e) {
     console.warn('Failed to embed external images:', e.message)
   }
 
-  // Encode back to buffer for renderers
   const svgBuffer = Buffer.from(svgString, 'utf-8')
+  const output = { sharp: { success: false }, resvg: { success: false } }
 
-  const output = {
-    sharp: { success: false },
-    resvg: { success: false },
-  }
-
-  // --- SHARP ---
   try {
     const sharpImage = sharp(svgBuffer)
     const metadata = await sharpImage.metadata()
@@ -92,7 +83,6 @@ export default async function handler(req, res) {
     output.sharp.error = err.message
   }
 
-  // --- RESVG ---
   try {
     const resvgInstance = new Resvg(svgBuffer, { fitTo: { mode: 'original' } })
     const pngBuffer = resvgInstance.render().asPng()
