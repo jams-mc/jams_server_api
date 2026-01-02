@@ -16,36 +16,58 @@ const imagesArray = [];
 /* ---------- ZIP LOADING ---------- */
 
 async function loadZip(base64) {
-  const raw = Buffer.from(base64, "base64");
-  return JSZip.loadAsync(raw);
+  try {
+    console.log("[ZIP] Decoding base64 bundle");
+    const raw = Buffer.from(base64, "base64");
+
+    const zip = await JSZip.loadAsync(raw);
+    console.log("[✓] Zip loaded. Files:");
+    zip.forEach((path) => console.log(" -", path));
+
+    return zip;
+  } catch (err) {
+    console.error("[✗] Failed to load zip:", err);
+    throw err;
+  }
 }
 
 async function loadBundle(zip) {
+  console.log("[BUNDLE] Loading bundle…");
+
+  /* --- mapping CSV --- */
   const mapText = await zip.file("bundle/badge_mapping.csv").async("string");
   const mapLines = mapText.trim().split("\n").slice(1);
 
   const mapping = mapLines.map(line => {
     const [, icon, outline, layer] = line.split(",");
-    return {
+    const result = {
       icon: icon ? icon + ".png" : null,
       outline: outline ? outline + ".png" : null,
       layer: Number(layer)
     };
+
+    console.log("[MAP] Parsed:", result);
+    return result;
   });
 
+  /* --- colors CSV --- */
   const colText = await zip.file("bundle/badge_colors.bytes").async("string");
   const colLines = colText.trim().split("\n").slice(1);
 
   const colors = colLines.map(line => {
     const [, r, g, b, layer] = line.split(",");
-    return {
+    const result = {
       r: Number(r),
       g: Number(g),
       b: Number(b),
       layer: Number(layer)
     };
+
+    console.log("[COLOR] Parsed:", result);
+    return result;
   });
 
+  /* --- images --- */
   const images = {};
 
   for (const path in zip.files) {
@@ -56,44 +78,90 @@ async function loadBundle(zip) {
 
       images[name] = base64;
       images[path] = base64;
+
       imagesArray.push({ name, path, filebase64: base64 });
+
+      if (path.startsWith("bundle/")) {
+        images[path.replace("bundle/", "")] = base64;
+      }
+
+      console.log(`[IMG] Loaded ${path}`);
     }
   }
+
+  console.log("[✓] Bundle loaded");
+  console.log("[DEBUG] imagesArray length:", imagesArray.length);
 
   return { mapping, colors, images };
 }
 
+/* ---------- IMAGE LOOKUP FALLBACK ---------- */
+
+async function fetchImageByName(imageName, imagesArray) {
+  console.log("[FETCH] Images array received:", imagesArray.length);
+  console.log("[FETCH] Looking for image:", imageName);
+
+  const searchName = imageName.toLowerCase();
+
+  for (let i = 0; i < imagesArray.length; i++) {
+    const item = imagesArray[i];
+    if (
+      item.name.toLowerCase() === searchName ||
+      item.path.toLowerCase() === searchName
+    ) {
+      console.log("[FETCH ✓] Match found:", item);
+      return item.filebase64;
+    }
+  }
+
+  console.warn(`[FETCH ✗] Image "${imageName}" not found`);
+  return null;
+}
+
 /* ---------- DRAWING ---------- */
 
-async function drawLayer(ctx, base64Png, color, scale) {
-  if (!base64Png) return;
+async function drawLayer(ctx, base64Png, color, scale, path = "<unknown>") {
+  if (!base64Png) {
+    console.warn(`[DRAW] Skipped empty layer: ${path}`);
+    return;
+  }
 
-  const img = await loadImage(
-    "data:image/png;base64," + base64Png
-  );
+  try {
+    console.log(`[DRAW] Loading image: ${path}`);
+    const img = await loadImage("data:image/png;base64," + base64Png);
 
-  const size = ctx.canvas.width;
-  const s = size * scale;
-  const o = (size - s) / 2;
+    const size = ctx.canvas.width;
+    const s = size * scale;
+    const o = (size - s) / 2;
 
-  const tmp = createCanvas(size, size);
-  const t = tmp.getContext("2d");
+    const tmp = createCanvas(size, size);
+    const t = tmp.getContext("2d");
 
-  t.drawImage(img, o, o, s, s);
-  t.globalCompositeOperation = "source-in";
-  t.fillStyle = `rgb(${color.r},${color.g},${color.b})`;
-  t.fillRect(0, 0, size, size);
-  t.globalCompositeOperation = "source-over";
+    t.drawImage(img, o, o, s, s);
+    t.globalCompositeOperation = "source-in";
+    t.fillStyle = `rgb(${color.r},${color.g},${color.b})`;
+    t.fillRect(0, 0, size, size);
+    t.globalCompositeOperation = "source-over";
 
-  ctx.drawImage(tmp, 0, 0);
+    ctx.drawImage(tmp, 0, 0);
+
+    console.log(`[DRAW ✓] Drew layer: ${path}`);
+  } catch (err) {
+    console.error(`[DRAW ✗] Failed to draw ${path}`, err);
+  }
 }
 
 /* ---------- MAIN RENDER ---------- */
 
 async function renderBadge(badge, size = 512) {
+  console.log("[RENDER] Badge request:", badge);
+
   if (!__bundle) {
+    console.log("[CACHE] Bundle not loaded, loading now…");
     const zip = await loadZip(BUNDLE_BASE64);
     __bundle = await loadBundle(zip);
+  } else {
+    console.log("[CACHE] Using cached bundle");
   }
 
   const { mapping, colors, images } = __bundle;
@@ -107,15 +175,38 @@ async function renderBadge(badge, size = 512) {
   const borderColor = colors[badge.Color2Idx] || { r: 255, g: 255, b: 255 };
   const symbolColor = colors[badge.Color1Idx] || { r: 255, g: 255, b: 255 };
 
-  if (border.icon)
-    await drawLayer(ctx, images[border.icon], borderColor, 1.0);
+  console.log("[RENDER] Border:", border);
+  console.log("[RENDER] Symbol:", symbol);
 
-  if (border.outline)
-    await drawLayer(ctx, images[border.outline], symbolColor, 1.0);
+  if (border.icon) {
+    console.log("[RENDER] Drawing border icon:", border.icon);
+    await drawLayer(ctx, images[border.icon], borderColor, 1.0, border.icon);
+  }
 
-  if (symbol.icon)
-    await drawLayer(ctx, images[symbol.icon], symbolColor, 0.65);
+  if (border.outline) {
+    console.log("[RENDER] Drawing border outline:", border.outline);
+    await drawLayer(ctx, images[border.outline], symbolColor, 1.0, border.outline);
+  }
 
+  if (symbol.icon) {
+    console.log("[RENDER] Drawing symbol icon:", symbol.icon);
+
+    let imgBase64 = images[symbol.icon];
+
+    if (!imgBase64) {
+      console.warn(`[WARN] Image "${symbol.icon}" missing, attempting fallback`);
+      imgBase64 = await fetchImageByName(symbol.icon, imagesArray);
+      images[symbol.icon] = imgBase64;
+    }
+
+    if (imgBase64) {
+      await drawLayer(ctx, imgBase64, symbolColor, 0.65, symbol.icon);
+    } else {
+      console.error(`[ERROR] Symbol icon could not be resolved: ${symbol.icon}`);
+    }
+  }
+
+  console.log("[✓] Render complete");
   return canvas.toBuffer("image/png");
 }
 
@@ -123,14 +214,16 @@ async function renderBadge(badge, size = 512) {
 
 export default async function handler(req, res) {
   try {
-    const json = JSON.parse(decodeURIComponent(req.query.data));
-    const png = await renderBadge(json, 512);
+    console.log("[HTTP] Incoming request:", req.query);
+
+    const badge = JSON.parse(decodeURIComponent(req.query.data));
+    const png = await renderBadge(badge, 512);
 
     res.setHeader("Content-Type", "image/png");
-    res.setHeader("Cache-Control", "public, max-age=31536000");
+    res.setHeader("Cache-Control", "no-store");
     res.status(200).send(png);
   } catch (err) {
-    console.error(err);
+    console.error("[HTTP ✗] Render failed:", err);
     res.status(400).json({ error: err.message });
   }
 }
