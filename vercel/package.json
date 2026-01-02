@@ -36,7 +36,8 @@
     "opentype.js": "latest",
     "skia-canvas":"latest",
     "fontkit":"latest",
-    "wav-encoder": "latest"  
+    "wav-encoder": "latest",
+    "canvas": "latest"
   },
   "devDependencies": {
     "eslint": "8.45.0",
