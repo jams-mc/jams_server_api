@@ -3,8 +3,8 @@ import { Resvg } from '@resvg/resvg-js'
 import fetch from 'node-fetch'
 
 async function embedExternalImages(svgString) {
-  // ✅ Dynamically import jsdom here
   const { JSDOM } = await import('jsdom')
+  const sharp = (await import('sharp')).default
 
   const dom = new JSDOM(svgString, { contentType: 'image/svg+xml' })
   const document = dom.window.document
@@ -13,21 +13,49 @@ async function embedExternalImages(svgString) {
   for (const img of images) {
     const href = img.getAttribute('href') || img.getAttribute('xlink:href')
     if (!href) continue
-    if (href.startsWith('data:')) continue // already embedded
+    if (href.startsWith('data:')) continue
 
     try {
       const response = await fetch(href)
       if (!response.ok) continue
+
+      // 👇 THIS buffer is used for BOTH size detection and embedding
       const buffer = await response.buffer()
-      const mimeType = response.headers.get('content-type') || 'image/png'
+
+      // ================================
+      // ✅ ADD THIS BLOCK — RIGHT HERE
+      // ================================
+      const hasWidth = img.hasAttribute('width')
+      const hasHeight = img.hasAttribute('height')
+
+      if (!hasWidth || !hasHeight) {
+        const meta = await sharp(buffer).metadata()
+
+        // height exists → compute width
+        if (!hasWidth && hasHeight && meta.width && meta.height) {
+          const h = parseFloat(img.getAttribute('height'))
+          img.setAttribute('width', (h * meta.width / meta.height).toString())
+        }
+
+        // width exists → compute height
+        if (!hasHeight && hasWidth && meta.width && meta.height) {
+          const w = parseFloat(img.getAttribute('width'))
+          img.setAttribute('height', (w * meta.height / meta.width).toString())
+        }
+      }
+      // ================================
+      // ✅ END FIX
+      // ================================
+
+      const mimeType =
+        response.headers.get('content-type') || 'image/png'
       const base64 = buffer.toString('base64')
       const dataUri = `data:${mimeType};base64,${base64}`
 
-      if (img.hasAttribute('href')) {
-        img.setAttribute('href', dataUri)
-      } else {
-        img.setAttribute('xlink:href', dataUri)
-      }
+      // Set BOTH (important for resvg)
+      img.setAttribute('href', dataUri)
+      img.setAttribute('xlink:href', dataUri)
+
     } catch (e) {
       console.warn('Failed to fetch image:', href, e.message)
     }
@@ -35,6 +63,7 @@ async function embedExternalImages(svgString) {
 
   return document.documentElement.outerHTML
 }
+
 
 export const config = {
   api: {
