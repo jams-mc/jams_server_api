@@ -3,94 +3,38 @@ import { Resvg } from '@resvg/resvg-js'
 import fetch from 'node-fetch'
 
 async function embedExternalImages(svgString) {
+  // ✅ Dynamically import jsdom here
   const { JSDOM } = await import('jsdom')
-  const sharp = (await import('sharp')).default
 
   const dom = new JSDOM(svgString, { contentType: 'image/svg+xml' })
   const document = dom.window.document
   const images = [...document.querySelectorAll('image')]
 
-  console.log(`[SVG] Found ${images.length} <image> elements`)
-
-  for (let i = 0; i < images.length; i++) {
-    const img = images[i]
-
+  for (const img of images) {
     const href = img.getAttribute('href') || img.getAttribute('xlink:href')
-    console.log(`\n[IMG ${i}] original href:`, href)
-
-    if (!href) {
-      console.log(`[IMG ${i}] ❌ No href, skipping`)
-      continue
-    }
-
-    if (href.startsWith('data:')) {
-      console.log(`[IMG ${i}] ⚠️ Already embedded, skipping`)
-      continue
-    }
+    if (!href) continue
+    if (href.startsWith('data:')) continue // already embedded
 
     try {
       const response = await fetch(href)
-      if (!response.ok) {
-        console.log(`[IMG ${i}] ❌ Fetch failed: ${response.status}`)
-        continue
-      }
-
+      if (!response.ok) continue
       const buffer = await response.buffer()
-      console.log(`[IMG ${i}] ✅ Fetched image (${buffer.length} bytes)`)
-
-      const hasWidth = img.hasAttribute('width')
-      const hasHeight = img.hasAttribute('height')
-
-      console.log(
-        `[IMG ${i}] SVG attrs before → width: ${img.getAttribute('width')} height: ${img.getAttribute('height')}`
-      )
-
-      if (!hasWidth || !hasHeight) {
-        const meta = await sharp(buffer).metadata()
-        console.log(`[IMG ${i}] Sharp metadata:`, meta)
-
-        if (!meta.width || !meta.height) {
-          console.log(`[IMG ${i}] ❌ No intrinsic size from Sharp`)
-        }
-
-        if (!hasWidth && hasHeight && meta.width && meta.height) {
-          const h = parseFloat(img.getAttribute('height'))
-          const w = h * meta.width / meta.height
-          img.setAttribute('width', w.toFixed(2))
-          console.log(`[IMG ${i}] ➕ Injected width = ${w.toFixed(2)}`)
-        }
-
-        if (!hasHeight && hasWidth && meta.width && meta.height) {
-          const w = parseFloat(img.getAttribute('width'))
-          const h = w * meta.height / meta.width
-          img.setAttribute('height', h.toFixed(2))
-          console.log(`[IMG ${i}] ➕ Injected height = ${h.toFixed(2)}`)
-        }
-      } else {
-        console.log(`[IMG ${i}] ✅ width & height already present`)
-      }
-
-      const mimeType =
-        response.headers.get('content-type') || 'image/png'
+      const mimeType = response.headers.get('content-type') || 'image/png'
       const base64 = buffer.toString('base64')
       const dataUri = `data:${mimeType};base64,${base64}`
 
-      img.setAttribute('href', dataUri)
-      img.setAttribute('xlink:href', dataUri)
-
-      console.log(
-        `[IMG ${i}] 📌 Embedded + final attrs → width: ${img.getAttribute('width')} height: ${img.getAttribute('height')}`
-      )
-
+      if (img.hasAttribute('href')) {
+        img.setAttribute('href', dataUri)
+      } else {
+        img.setAttribute('xlink:href', dataUri)
+      }
     } catch (e) {
-      console.warn(`[IMG ${i}] 💥 Error:`, e.message)
+      console.warn('Failed to fetch image:', href, e.message)
     }
   }
 
-  console.log('[SVG] Image embedding complete')
   return document.documentElement.outerHTML
 }
-
 
 export const config = {
   api: {
